@@ -4,10 +4,11 @@ import seaborn as sns
 import pickle
 from sklearn import preprocessing
 from numpy.matlib import repmat
+
 sns.set_style('darkgrid')
 
 
-class CIFAR10:
+class CIFAR:
     def __init__(self):
         self.input_dim = 32 * 32 * 3
         self.num_labels = 10
@@ -16,7 +17,7 @@ class CIFAR10:
 
     def getLabels(self):
         """
-        Returnes the (named) labels of the data
+        Returns the (named) labels of the data
         """
         with open('cifar-10-batches-py/batches.meta', 'rb') as f:
             data = pickle.load(f, encoding='bytes')
@@ -49,13 +50,13 @@ class CIFAR10:
         return self.batches
 
 
-def normalize(X, mean, std):
+def normalize(data, mean, std):
     """
     Normalizes the data
     """
-    X -= repmat(mean, 1, np.size(X, axis=1))
-    X /= repmat(std, 1, np.size(X, axis=1))
-    return X
+    data -= repmat(mean, 1, np.size(data, axis=1))
+    data /= repmat(std, 1, np.size(data, axis=1))
+    return data
 
 # --------------------------------------------------------------------------------#
 
@@ -94,7 +95,7 @@ class Network():
         P = self.evaluateClassifier(X, W, b)
 
         J1 = np.sum(-np.log(np.multiply(Y, P).sum(axis=0))) / X.shape[1]
-        J2 = self.l * np.power(self.W, 2).sum()
+        J2 = self.l * np.sum(self.W**2)
 
         return J1+J2
 
@@ -105,7 +106,7 @@ class Network():
         P = self.evaluateClassifier(X)
         P = np.argmax(P, axis=0)
 
-        return np.sum(P == y)/y.shape[0]
+        return 100*np.sum(P == y)/y.shape[0]
 
     def computeGradients(self, X, Y):
         """
@@ -121,66 +122,29 @@ class Network():
 
         return gradW, gradb
 
-    def computeGradsNum(self, X, Y, h):
-        """
-        Slow but accurate method to determine the gradients
-        """
-
-        grad_w = np.zeros_like(self.W)
-        grad_b = np.zeros_like(self.b)
-
-        cost = self.computeCost(X, Y)
-
-        for i in range(self.b.shape[0]):
-            self.b[i] += h
-            c2 = self.computeCost(X, Y)
-            grad_b[i] = (c2 - cost) / h
-            self.b[i] -= h
-
-        for i in range(self.W.shape[0]):
-            for j in range(self.W.shape[1]):
-                self.W[i, j] += h
-                c2 = self.computeCost(X, Y)
-                grad_w[i, j] = (c2 - cost) / h
-                self.W[i, j] -= h
-
-        return grad_w, grad_b
-
-    def checkGradient(self, X, Y, batchSize=20, tol=1e-6):
-        """
-        Verify that the simple gradient is accurate by comparing with
-        a more computer intensive but accurate method.
-        """
-        gradW, gradb = self.computeGradients(X[:, 0:batchSize], Y[:, 0:20])
-        ngradW, ngradb = self.computeGradsNum(
-            X[:, 0:batchSize], Y[:, 0:20], tol)
-
-        rel_error = np.sum(abs(ngradW - gradW)) / np.maximum(tol,
-                                                             np.sum(abs(ngradW)) + np.sum(abs(gradW)))
-
-        return rel_error
-
     def train(self, training_data, validation_data, eta, n_epochs, n_batches, shuffle=False):
         """
         Trains the network by calculating weights and bias using Mini-Batch Gradient Descent
         """
 
-        X = training_data['X']
-        Y = training_data['Y']
+        X, Y, y = training_data['X'], training_data['Y'], training_data['y']
+        Xval, Yval, yval = validation_data['X'], validation_data['Y'], validation_data['y']
 
-        Xval = validation_data['X']
-        Yval = validation_data['Y']
+        cost_train, accuracy_train, cost_val, accuracy_val = np.zeros((n_epochs, 1)), np.zeros(
+            (n_epochs, 1)), np.zeros((n_epochs, 1)), np.zeros((n_epochs, 1))
 
-        cost_train = np.zeros((n_epochs, 1))
-        cost_val = np.zeros((n_epochs, 1))
         cost_train[0, :] = self.computeCost(X, Y)
         cost_val[0, :] = self.computeCost(Xval, Yval)
+        accuracy_train[0, :] = self.computeAccuracy(X, y)
+        accuracy_val[0, :] = self.computeAccuracy(Xval, yval)
+
         for i in range(1, n_epochs):
 
             if(shuffle):
                 rand = np.random.permutation(X.shape[1])
                 X = X[:, rand]
                 Y = Y[:, rand]
+                y = np.asarray([y[idx] for idx in rand])
 
             for j in range(1, int(X.shape[1]/n_batches)+1):
                 jstart = (j-1) * n_batches + 1
@@ -198,8 +162,10 @@ class Network():
 
             cost_train[i, :] = self.computeCost(X, Y)
             cost_val[i, :] = self.computeCost(Xval, Yval)
+            accuracy_train[i, :] = self.computeAccuracy(X, y)
+            accuracy_val[i, :] = self.computeAccuracy(Xval, yval)
 
-        return cost_train, cost_val
+        return cost_train.flatten(), cost_val.flatten(), accuracy_train.flatten(), accuracy_val.flatten()
 
 # -------------------------------------------------------------------------#
 
@@ -209,14 +175,54 @@ Functions to present the results
 """
 
 
-def plot_weights(W, labels):
+def computeGradsNum(network, X, Y, W, b, h):
+    """
+    Slow but accurate method to determine the gradients
+    """
+
+    grad_w = np.zeros(W.shape)
+    grad_b = np.zeros(b.shape)
+
+    cost = network.computeCost(X, Y)
+
+    for i in range(b.shape[0]):
+        b[i] += h
+        c2 = network.computeCost(X, Y)
+        grad_b[i] = (c2 - cost) / h
+        b[i] -= h
+
+    for i in range(W.shape[0]):
+        for j in range(W.shape[1]):
+            W[i, j] += h
+            c2 = network.computeCost(X, Y)
+            grad_w[i, j] = (c2 - cost) / h
+            W[i, j] -= h
+
+    return grad_w, grad_b
+
+
+def checkGradient(network, X, Y, batchSize=20, tol=1e-6):
+    """
+    Method used to check that the simple gradient is accurate by comparing with
+    a more computer intensive but accurate method.
+    """
+    gradW, gradb = network.computeGradients(X[:, 0:batchSize], Y[:, 0:20])
+    ngradW, ngradb = computeGradsNum(
+        network, X[:, 0:batchSize], Y[:, 0:20], network.W, network.b, tol)
+
+    rel_error = np.sum(abs(ngradW - gradW)) / np.maximum(tol,
+                                                         np.sum(abs(ngradW)) + np.sum(abs(gradW)))
+    return rel_error
+
+
+def plot_weights(W, labels, show=True, save=False, filename=None):
     """
     Plots the learnt weights of the network.
     This is a representation of the 'class template image'
     """
-    fig, axes = plt.subplots(2, 5)
-    for coef, label, ax in zip(W, labels, axes.ravel()):
-        im = coef.reshape(3, 32, 32)
+    fig, axes = plt.subplots(2, 5, figsize=(12.0, 4.0))
+    for w, label, ax in zip(W, labels, axes.ravel()):
+        im = w.reshape(3, 32, 32)
         im = (im - im.min()) / (im.max() - im.min())
         im = im.T
         im = np.rot90(im, k=3)
@@ -225,66 +231,135 @@ def plot_weights(W, labels):
         ax.set_xticks(())
         ax.set_yticks(())
         ax.axis('tight')
-    plt.show()
+
+    if filename is not None:
+        plt.savefig('results/weights_plot_{}.eps'.format(filename))
+        plt.clf()
+        plt.close()
+
+    if show:
+        plt.show()
 
 
-# TODO: Add method to easily plot accuracy and loss graphs
+def plot_performance(cost_train, cost_val, accuracy_train, accuracy_val, show=True, filename=None):
+    """
+    Plots the cost and accuracy against the epochs for the two data sets
+    """
+    plt.figure()
+    plt.plot(np.arange(len(cost_train)), cost_train, label='Training set')
+    plt.plot(np.arange(len(cost_val)), cost_val, label='Validation set')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    if filename is not None:
+        plt.savefig('results/cost_plot_{}.eps'.format(filename))
+        plt.clf()
+        plt.close()
 
-# TODO: Add method to show information about the data sets
+    plt.figure()
+    plt.plot(np.arange(len(accuracy_train)), accuracy_train,
+             label='Accuracy on training set')
+    plt.plot(np.arange(len(accuracy_val)), accuracy_val,
+             label='Accuracy on validation set')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    if filename is not None:
+        plt.savefig('results/accuracy_plot_{}.eps'.format(filename))
+        plt.clf()
+        plt.close()
+
+    if show:
+        plt.show()
+
+
+def summarize(dataset, training_data, validation, parameters):
+    """
+    Provides a summary of the network performance based on the given parameters
+    """
+
+    # Initialize the network
+    network = Network(dataset.input_dim, dataset.num_labels, l=parameters['l'])
+    modelnr = parameters['model_nr']
+
+    # Check initial accuracy
+    init_acc_train = network.computeAccuracy(
+        training_data['X'], training_data['y'])
+    init_acc_val = network.computeAccuracy(
+        validation_data['X'], validation_data['y'])
+
+    # Format string to ouput model stats
+    model_parameters = ' Model parameters: \n' + \
+        '  lambda:  \t{}\n'.format(parameters['l']) + \
+        '  eta:  \t{}\n'.format(parameters['eta']) + \
+        '  n_epochs: \t{}\n'.format(parameters['n_epochs']) + \
+        '  n_batches: \t{}\n'.format(parameters['n_batches']) + \
+        '  shuffle: \t{}\n'.format(parameters['shuffle'])
+
+    print(model_parameters)
+    # Train network
+    cost_train, cost_val, accuracy_train, accuracy_val = network.train(
+        training_data, validation_data, parameters['eta'], parameters['n_epochs'], parameters['n_batches'], parameters['shuffle'])
+
+    # Print accuracy and cost for training and validation data
+    model_performance = 'Training data:\n' + \
+                        '  accuracy (untrained): \t{:.2f}%\n'.format(init_acc_train) + \
+                        '  accuracy (trained): \t\t{:.2f}%\n'.format(accuracy_train[-1]) + \
+                        '  cost (final): \t\t{:.2f}%\n'.format(cost_train[-1]) + \
+                        'Validation data:\n' + \
+                        '  accuracy (untrained): \t{:.2f}%\n'.format(init_acc_val) + \
+                        '  accuracy (trained): \t\t{:.2f}%\n'.format(accuracy_val[-1]) + \
+                        '  cost (final): \t\t{:.2f}%\n'.format(cost_val[-1])
+
+    print(model_performance)
+
+    # Write model stats to file
+    with open('results/model_summary_{}.txt'.format(modelnr), 'w') as f:
+        f.write(model_parameters + model_performance)
+
+    # Generate and save plots
+    plot_performance(cost_train, cost_val, accuracy_train,
+                     accuracy_val, show=False, filename=modelnr)
+    plot_weights(network.W, dataset.getLabels(), show=False, filename=modelnr)
+
 
 # -------------------------------------------------------------------------#
 
 # Load data
 np.random.seed(400)
-data = CIFAR10()
-loaded_data = data.getBatches('data_batch_1', 'data_batch_2', 'test_batch')
+dataset = CIFAR()
+loaded_data = dataset.getBatches('data_batch_1', 'data_batch_2', 'test_batch')
 training_data = loaded_data[0]
 validation_data = loaded_data[1]
 test_data = loaded_data[2]
 
+# Calculate mean and standard deviation of training data
+mean = np.mean(training_data['X'], axis=1)
+std = np.std(training_data['X'], axis=1)
+
 # Normalize the data w.r.t training data
-training_data['X'] = normalize(training_data['X'], np.mean(training_data['X'], axis=1),
-                               np.std(training_data['X'], axis=1))
+training_data['X'] = normalize(training_data['X'], mean, std)
+validation_data['X'] = normalize(validation_data['X'], mean, std)
+test_data['X'] = normalize(test_data['X'], mean, std)
 
-validation_data['X'] = normalize(validation_data['X'], np.mean(training_data['X'], axis=1),
-                                 np.std(test_data['X'], axis=1))
 
-test_data['X'] = normalize(loaded_data[2]['X'], np.mean(training_data['X'], axis=1),
-                           np.std(training_data['X'], axis=1))
+GDparams = [
+    {'model_nr': 1,     'l': 0.0,     'eta': 0.001,
+        'n_epochs': 40,     'n_batches': 100,   'shuffle': True, },
+    {'model_nr': 2,     'l': 0.0,     'eta': 0.1,
+        'n_epochs': 40,     'n_batches': 100,   'shuffle': True, },
+    {'model_nr': 3,     'l': 0.1,     'eta': 0.001,
+        'n_epochs': 40,     'n_batches': 100,   'shuffle': True, },
+    {'model_nr': 4,     'l': 1.0,     'eta': 0.001,
+        'n_epochs': 40,     'n_batches': 100,   'shuffle': True, }
+]
+
+for parameters in GDparams:
+    summarize(dataset, training_data, validation_data, parameters)
 
 
 # Initiate the network
-network = Network(data.input_dim, data.num_labels)
-
-
-# Check performance of untrained network
-print('Accuracy on training data is', network.computeAccuracy(
-    training_data['X'], training_data['y']), 'with an untrained network')
-
-# Verify that the gradients calculated are good enough
-print('Relative error between analytical and numerical gradient:',
-      network.checkGradient(training_data['X'], training_data['Y']))
-
-# Train network
-print('Training the network...')
-cost_train, cost_val = network.train(
-    training_data, validation_data, 0.001, 40, 100)
-
-# Accuracy on training data
-print('Accuracy on training data: ', network.computeAccuracy(
-    training_data['X'], training_data['y']))
-
-# Accuracy on test data
-print('Accuracy on test data: ',  network.computeAccuracy(
-    test_data['X'], test_data['y']))
-
-# Determine performance
-
-plt.figure()
-plt.plot(np.arange(len(cost_train)), cost_train, label='Training set')
-plt.plot(np.arange(len(cost_val)), cost_val, label='Validation set')
-plt.xlabel('epoch')
-plt.ylabel('loss')
-plt.legend()
-
-plot_weights(network.W, data.getLabels())
+# network = Network(data.input_dim, data.num_labels)
+# # Verify that the gradients calculated are good enough
+# print('Relative error between analytical and numerical gradient:',
+#       checkGradient(network, training_data['X'], training_data['Y']))
