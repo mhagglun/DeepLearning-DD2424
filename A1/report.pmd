@@ -23,7 +23,7 @@ A comparison is therefore made between the analytical gradient and the gradients
 The results are shown in the table below,
 
 
-```python, echo=False,
+```python, term=True, echo=False,
 checkGradient()
 ```
 

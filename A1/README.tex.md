@@ -19,20 +19,12 @@ The results are shown in the table below,
 
 
 
-```
-Relative error between the Analytical and Finite Difference approach
-is 3.760843125266874e-07
-Relative error between the Analytical and Central Difference approach
-is 1.4283217134655148e-09
 
-
-| Gradient                       |   Mean Weight |   Min Weight |   Max Weight |
-|--------------------------------|---------------|--------------|--------------|
-| Analytical                     |   2.77556e-18 |    -0.301867 |     0.329779 |
-| Finite difference (Numerical)  |   4.26082e-08 |    -0.301867 |     0.329779 |
-| Central difference (Numerical) |  -1.73473e-13 |    -0.301867 |     0.329779 |
-```
-
+| Gradient                       | Relative Error         |   Mean Weight |   Min Weight |   Max Weight |
+|--------------------------------|------------------------|---------------|--------------|--------------|
+| Analytical                     | -                      |   2.77556e-18 |    -0.301867 |     0.329779 |
+| Finite difference (Numerical)  | 3.760843125266874e-07  |   4.26082e-08 |    -0.301867 |     0.329779 |
+| Central difference (Numerical) | 1.4283217134655148e-09 |  -1.73473e-13 |    -0.301867 |     0.329779 |
 
 
 
@@ -70,7 +62,7 @@ Test data:
 ```
 
 ![](figures/report_figure3_1.png)\
-![](figures/report_figure3_2.png)\
+![](figures/report_figure3_2.png)
 
 
 
@@ -98,7 +90,7 @@ Test data:
 ```
 
 ![](figures/report_figure4_1.png)\
-![](figures/report_figure4_2.png)\
+![](figures/report_figure4_2.png)
 
 
 
@@ -126,7 +118,7 @@ Test data:
 ```
 
 ![](figures/report_figure5_1.png)\
-![](figures/report_figure5_2.png)\
+![](figures/report_figure5_2.png)
 
 
 
@@ -154,7 +146,7 @@ Test data:
 ```
 
 ![](figures/report_figure6_1.png)\
-![](figures/report_figure6_2.png)\
+![](figures/report_figure6_2.png)
 
 
 

@@ -344,13 +344,11 @@ def checkGradient(loss='cross', batchSize=20, tol=1e-6):
                                                          np.sum(abs(slow_gradW)) + np.sum(abs(gradW)))
 
     
-    table = [['Analytical', np.mean(gradW), np.min(gradW), np.max(gradW)],
-             ['Finite difference (Numerical)', np.mean(ngradW), np.min(ngradW), np.max(ngradW)],
-             ['Central difference (Numerical)', np.mean(slow_gradW), np.min(slow_gradW), np.max(slow_gradW)]]
+    table = [['Analytical', '-' ,np.mean(gradW), np.min(gradW), np.max(gradW)],
+             ['Finite difference (Numerical)', rel_error, np.mean(ngradW), np.min(ngradW), np.max(ngradW)],
+             ['Central difference (Numerical)', rel_error_slow, np.mean(slow_gradW), np.min(slow_gradW), np.max(slow_gradW)]]
 
-    table = tabulate(table, headers=['Gradient', 'Mean Weight', 'Min Weight', 'Max Weight'], tablefmt='github')
-    print('Relative error between the Analytical and Finite Difference approach is', rel_error,
-                  '\nRelative error between the Analytical and Central Difference approach is', rel_error_slow,'\n\n')
+    table = tabulate(table, headers=['Gradient', 'Relative Error', 'Mean Weight', 'Min Weight', 'Max Weight'], tablefmt='github')
     print(table)
 
 
