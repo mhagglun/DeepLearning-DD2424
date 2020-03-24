@@ -1,0 +1,73 @@
+# DD2424 Deep Learning in Data Science - Assignment 1
+```python, echo=False
+%matplotlib inline
+import os
+import sys
+sys.path.append(os.getcwd())
+from assignment1 import *
+```
+
+## Introduction
+The goal of this assignment is to train and evaluate a single layer neural network in order to
+classify images from the [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html) dataset.
+
+
+## Computing the gradient
+
+A analytical approach is used to compute the gradients of the weights and bias. While it is relatively efficient to compute, it is less accurate
+than gradients obtained via numerical methods. Because of this one has to first verify that the difference between the two approaches is relatively small.
+The relative error is defined as $$ \frac{|g_{a} - g_{b}|}{ max(\epsilon, |g_{a}| - |g_{b}|) } $$
+Where $|g_{a}|$ is the analytically computed gradient and $|g_{n}|$ is the numerically computed gradient and $\epsilon$ is a very small positive number.
+
+A comparison is therefore made between the analytical gradient and the gradients computed with the *Finite* and *Central-*difference methods, respectively.
+The results are shown in the table below,
+
+
+```python, echo=False,
+checkGradient()
+```
+
+
+From the table above, it is clear that the analytical gradient is sufficiently close to the numerical ones. 
+Thus we may continue with the evaluation of the single layer neural network, knowing that the gradient used to train the network
+is accurate.
+
+## The result from minimizing the cross-entropy loss function
+
+The network was then trained using different values for regularization and mini-batch gradient descent.
+Below are the results from a few models trained with different learning rates $\eta$ and regularization parameters $\lambda$.
+
+```python, term=True, echo=False,
+report(loss='cross', l=0, eta=0.001, n_epochs=40, n_batches=100, shuffle=False)
+```
+
+```python, term=True, echo=False, 
+report(loss='cross', l=0, eta=0.1, n_epochs=40, n_batches=100, shuffle=False)
+```
+
+```python, term=True, echo=False, 
+report(loss='cross', l=0.1, eta=0.001, n_epochs=40, n_batches=100, shuffle=False)
+```
+
+```python, term=True, echo=False, 
+report(loss='cross', l=1, eta=0.001, n_epochs=40, n_batches=100, shuffle=False)
+```
+
+
+## The effect of regularization and learning rate
+
+The parameter $\lambda$ controls the degree of the regularization in the model.
+The regularization adds a penalty term to the cost function. Because the objective is to minimize the
+cost function, the regularization will effectively penalize the function for large weights. 
+This will force the weights closer to zero, resulting in a simpler network which is slightly underfitted 
+to the training data. Since regularization helps with overfitting, a model with regularization should generalize
+better to new data.
+
+
+The learning rate $\eta$ controls how quickly the model adjusts to the data. It is the 'step size' when updating the 
+weights and bias. As such, a smaller $\eta$ requires more training epochs for the model to converge, while a larger learning 
+rate results in a faster convergence in fewer training epochs. However, a learning rate that is too large may cause the model to 
+very quickly adapt to a suboptimal solution or to oscillate rather violently around what would be the converged solution.
+It is therefore important that one takes the time to finely tune the learning rate in order to get a model that behaves and performs well.  
+
+

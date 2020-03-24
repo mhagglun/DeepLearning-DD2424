@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 from numpy.matlib import repmat
+from tabulate import tabulate
 
 sns.set_style('darkgrid')
-
 
 class Network():
     """
@@ -124,8 +124,9 @@ class Network():
         margins = np.maximum(0, s - sy + 1)
         margins[Y == 1] = 0
         # Convert to indicator matrix, for each entry of the matrix
-        margins[margins > 0] = 1
         # if wj*x - wy*x + 1 > 1 then the entry is 1, else 0
+        margins[margins > 0] = 1
+        
 
         count = np.sum(margins, axis=0)
 
@@ -188,8 +189,6 @@ class Network():
 
         return cost_train.flatten(), cost_val.flatten(), accuracy_train.flatten(), accuracy_val.flatten()
 
-# -------------------------------------------------------------------------#
-
 
 class CIFAR:
     """
@@ -199,7 +198,6 @@ class CIFAR:
     def __init__(self):
         self.input_dim = 32*32*3
         self.num_labels = 10
-        self.batches = {}
 
     def getLabels(self):
         """
@@ -229,21 +227,14 @@ class CIFAR:
             y = np.array(data[b'labels'])
             Y = (np.eye(self.num_labels)[y]).T
 
-            # Add batch to batches
-            self.batches[name] = {
+            batch = {
                 'batch_name': data[b'batch_label'],
                 'X': X,
                 'Y': Y,
                 'y': y,
             }
-        return self.batches[name]
+        return batch
 
-    def getBatches(self, *args):
-        """
-        Loads and returns a list of batches of data.
-        """
-        self.batches = [self.getBatch(name) for name in args]
-        return self.batches
 
     def normalize(self, data, mean, std):
         """
@@ -253,18 +244,12 @@ class CIFAR:
         data /= repmat(std, 1, np.size(data, axis=1))
         return data
 
-# --------------------------------------------------------------------------------#
 
-
-"""
-Functions for model comparison and presentation of the results.
-"""
-
+""" Functions for model comparison and presentation of the results. """
 
 def computeGradsNum(network, X, Y, h):
     """
-    A numerical approach based on finite difference method to calculate the gradients.
-    Slightly faster but less accurate than the central difference approach.
+    A numerical approach based on Finite Difference method to calculate the gradients.
     """
     W = network.W
     b = network.b
@@ -292,8 +277,8 @@ def computeGradsNum(network, X, Y, h):
 
 def computeGradsNumSlow(network, X, Y, h):
     """
-    A slow but accurate numerical method based on central difference approximation
-    to calculate the gradients
+    Compute the gradient using the Central Difference approximation.
+    Slightly slower but more accurate than the finite difference approach.
     """
     W = network.W
     b = network.b
@@ -322,24 +307,56 @@ def computeGradsNumSlow(network, X, Y, h):
     return gradW, gradb
 
 
-def checkGradient(network, X, Y, batchSize=20, tol=1e-6):
+def checkGradient(loss='cross', batchSize=20, tol=1e-6):
     """
     Method used to check that the simple gradient is accurate by comparing with
     a more computer intensive but accurate method.
     """
+    np.random.seed(400)
+    dataset = CIFAR()
+    training_data = dataset.getBatch('data_batch_1')
+
+    X = training_data['X']
+    Y = training_data['Y']
+
+    # Calculate mean and standard deviation of training data
+    mean = np.mean(X, axis=1)
+    std = np.std(X, axis=1)
+
+    # Normalize the data w.r.t training data
+    X = dataset.normalize(X, mean, std)
+    
+
+    # Initiate the network
+    network = Network(dataset.input_dim, dataset.num_labels, loss=loss)
+
+
     gradW, gradb = network.computeGradients(X[:, :batchSize], Y[:, :batchSize])
-    ngradW, ngradb = computeGradsNumSlow(
-        network, X[:, :batchSize], Y[:, :batchSize], tol)
+    
+    ngradW, ngradb = computeGradsNum(network, X[:, :batchSize], Y[:, :batchSize], tol)
+
+    slow_gradW, slow_gradb = computeGradsNumSlow(network, X[:, :batchSize], Y[:, :batchSize], tol)
 
     rel_error = np.sum(abs(ngradW - gradW)) / np.maximum(tol,
                                                          np.sum(abs(ngradW)) + np.sum(abs(gradW)))
-    return rel_error
+    
+    rel_error_slow = np.sum(abs(slow_gradW - gradW)) / np.maximum(tol,
+                                                         np.sum(abs(slow_gradW)) + np.sum(abs(gradW)))
+
+    
+    table = [['Analytical', np.mean(gradW), np.min(gradW), np.max(gradW)],
+             ['Finite difference (Numerical)', np.mean(ngradW), np.min(ngradW), np.max(ngradW)],
+             ['Central difference (Numerical)', np.mean(slow_gradW), np.min(slow_gradW), np.max(slow_gradW)]]
+
+    table = tabulate(table, headers=['Gradient', 'Mean Weight', 'Min Weight', 'Max Weight'], tablefmt='github')
+    print('Relative error between the Analytical and Finite Difference approach is', rel_error,
+                  '\nRelative error between the Analytical and Central Difference approach is', rel_error_slow,'\n\n')
+    print(table)
 
 
 def plot_weights(W, labels, show=True, save=False, filename=None):
     """
-    Plots the learnt weights of the network.
-    This is a representation of the 'class template image'.
+    Plots the learnt weights of the network, representing the 'template image' for each class.
     """
     fig, axes = plt.subplots(2, 5, figsize=(12.0, 4.0))
     for w, label, ax in zip(W, labels, axes.ravel()):
@@ -354,41 +371,38 @@ def plot_weights(W, labels, show=True, save=False, filename=None):
         ax.axis('tight')
 
     if filename is not None:
-        plt.savefig('results/weights_plot_{}.eps'.format(filename))
+        plt.savefig('results/classTemplates_{}.png'.format(filename))
         plt.clf()
         plt.close()
-    else:
-        plt.show()
-
+    
 
 def plot_performance(cost_train, cost_val, accuracy_train, accuracy_val, filename=None):
     """
     Plots the cost and accuracy against the epochs for the two data sets.
     """
-    plt.figure()
-    plt.plot(np.arange(len(cost_train)), cost_train, label='Training set')
-    plt.plot(np.arange(len(cost_val)), cost_val, label='Validation set')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-    if filename is not None:
-        plt.savefig('results/cost_plot_{}.eps'.format(filename))
-        plt.clf()
-        plt.close()
-
-    plt.figure()
+    plt.figure(figsize=(12.0, 5.0))
+    plt.subplot(1,2,1)
     plt.plot(np.arange(len(accuracy_train)), accuracy_train,
              label='Accuracy on training set')
     plt.plot(np.arange(len(accuracy_val)), accuracy_val,
              label='Accuracy on validation set')
     plt.xlabel('Epoch')
-    plt.ylabel('Accuracy')
+    plt.ylabel('Accuracy %')
     plt.legend()
+
+    plt.subplot(1,2,2)
+    plt.plot(np.arange(len(cost_train)), cost_train, label='Training set')
+    plt.plot(np.arange(len(cost_val)), cost_val, label='Validation set')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    # plt.tight_layout()
+
     if filename is not None:
-        plt.savefig('results/accuracy_plot_{}.eps'.format(filename))
+        plt.savefig('results/performance_{}.png'.format(filename))
         plt.clf()
         plt.close()
-
+    
 
 def model_summary(dataset, training_data, validation_data, test_data, parameters, loss='cross', save=False):
     """
@@ -426,7 +440,6 @@ def model_summary(dataset, training_data, validation_data, test_data, parameters
     accuracy_test = network.computeAccuracy(test_data['X'], test_data['y'])
     cost_test = network.computeCost(test_data['X'], test_data['Y'])
 
-    # Print accuracy and cost for training and validation data
     model_performance = 'Training data:\n' + \
                         '   accuracy (untrained): \t{:.2f}%\n'.format(init_acc_train) + \
                         '   accuracy (trained): \t\t{:.2f}%\n'.format(accuracy_train[-1]) + \
@@ -444,7 +457,7 @@ def model_summary(dataset, training_data, validation_data, test_data, parameters
 
     if save:
         filename = loss+"_lambda"+str(parameters['l'])+"_eta"+str(parameters['eta'])
-        with open('results/model_summary_{}.txt'.format(filename), 'w') as f:
+        with open('results/summary_{}.txt'.format(filename), 'w') as f:
             f.write(model_parameters + model_performance)
     else:
         filename = None
@@ -453,20 +466,17 @@ def model_summary(dataset, training_data, validation_data, test_data, parameters
     plot_performance(cost_train, cost_val, accuracy_train,
                      accuracy_val, filename=filename)
     plot_weights(network.W, dataset.getLabels(), filename=filename)
-
+    plt.show()
 
 # -------------------------------------------------------------------------#
 
-# Load data
-
-def report(loss='cross', save=False):
+def report(loss='cross', l=0.0, eta=0.001, n_epochs=40, n_batches=100, shuffle=False, save=False):
 
     np.random.seed(400)
     dataset = CIFAR()
-    batches = dataset.getBatches('data_batch_1', 'data_batch_2', 'test_batch')
-    training_data = batches[0]
-    validation_data = batches[1]
-    test_data = batches[2]
+    training_data = dataset.getBatch('data_batch_1')
+    validation_data = dataset.getBatch('data_batch_2')
+    test_data = dataset.getBatch('test_batch')
 
     # Calculate mean and standard deviation of training data
     mean = np.mean(training_data['X'], axis=1)
@@ -477,28 +487,12 @@ def report(loss='cross', save=False):
     validation_data['X'] = dataset.normalize(validation_data['X'], mean, std)
     test_data['X'] = dataset.normalize(test_data['X'], mean, std)
 
-    # Initiate the network
-    network = Network(dataset.input_dim, dataset.num_labels, loss='svm')
-    # Verify that the gradients calculated are good enough
-    print('Relative error between analytical and numerical gradient:',
-          checkGradient(network, training_data['X'], training_data['Y']))
+    param = {'l': l,  'eta': eta,   'n_epochs': n_epochs, 'n_batches': n_batches,   'shuffle': shuffle, }
+
+    model_summary(dataset, training_data, validation_data,
+                  test_data, param, loss=loss, save=save)
 
 
-    GDparams = [
-        {'l': 0.0,  'eta': 0.001,   'n_epochs': 40, 'n_batches': 100,   'shuffle': True, },
-        {'l': 0.0,  'eta': 0.1,     'n_epochs': 40, 'n_batches': 100,   'shuffle': True, },
-        {'l': 0.1,  'eta': 0.001,   'n_epochs': 40, 'n_batches': 100,   'shuffle': True, },
-        {'l': 1.0,  'eta': 0.001,   'n_epochs': 40, 'n_batches': 100,   'shuffle': True, }
-    ]
-
-    for parameters in GDparams:
-        model_summary(dataset, training_data, validation_data,
-                      test_data, parameters, loss=loss, save=save)
-
-    # param = {'l': 0.0,  'eta': 0.001,   'n_epochs': 40, 'n_batches': 100,   'shuffle': True, }
-
-    # model_summary(dataset, training_data, validation_data,
-    #               test_data, param, loss=param['loss'], save=False)
-
-
-report('svm', True)
+# # Example use:
+# checkGradient()
+# report(loss='cross', l=0, eta=0.001, n_epochs=40, n_batches=100, shuffle=False)
