@@ -1,5 +1,6 @@
 # DD2424 Deep Learning in Data Science - Assignment 1
-```python, echo=False
+
+```python, term=True, echo=False
 %matplotlib inline
 import os
 import sys
@@ -8,23 +9,32 @@ from assignment1 import *
 ```
 
 ## Introduction
-The goal of this assignment is to train and evaluate a single layer neural network in order to
+The goal of this assignment is to train and evaluate the performance of a *single layer neural network* in order to
 classify images from the [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html) dataset.
 
+Here is a sample from the data set of the images that we'll attempt to classify.
+```python, term=True, echo=False,
+plot_images()
+```
+
+In the first part of the assignment we'll use the cross-entropy loss as our cost function which we'll try to minimize.
+The cross-entropy is basically a measure that tells us the difference between what the model thinks that the output (class)
+distribution should be, and what the actual distribution of the classes are in the data set. The minimization of the loss is done using
+mini-batch gradient descent which requires us to calculate the gradients of the cost function. 
 
 ## Computing the gradient
 
 A analytical approach is used to compute the gradients of the weights and bias. While it is relatively efficient to compute, it is less accurate
 than gradients obtained via numerical methods. Because of this one has to first verify that the difference between the two approaches is relatively small.
 The relative error is defined as $$ \frac{|g_{a} - g_{b}|}{ max(\epsilon, |g_{a}| - |g_{b}|) } $$
-Where $|g_{a}|$ is the analytically computed gradient and $|g_{n}|$ is the numerically computed gradient and $\epsilon$ is a very small positive number.
+Where \(|g_{a}|\) is the analytically computed gradient and \(|g_{n}|\) is the numerically computed gradient and $\epsilon$ is a very small positive number.
 
-A comparison is therefore made between the analytical gradient and the gradients computed with the *Finite* and *Central-*difference methods, respectively.
+A comparison is then made between the analytical gradient and the gradients computed with the *Finite* and *Central-*difference methods, respectively.
 The results are shown in the table below,
 
 
-```python, term=True, echo=False,
-checkGradient()
+```python, term=True, echo=False, result='tex', wrap=False
+check_gradient()
 ```
 
 
@@ -37,37 +47,169 @@ is accurate.
 The network was then trained using different values for regularization and mini-batch gradient descent.
 Below are the results from a few models trained with different learning rates $\eta$ and regularization parameters $\lambda$.
 
+
+**Model 1**
 ```python, term=True, echo=False,
-report(loss='cross', l=0, eta=0.001, n_epochs=40, n_batches=100, shuffle=False)
+report(loss='cross', l=0, eta=0.1, n_epochs=40, n_batches=100)
+```
+The small images above represents the weights or the 'image templates' for each class that the model
+has learned during training. Now we'll make some small adjustments to the model parameters and observe the results. 
+
+
+**Model 2** - Decrease the learning rate
+```python, term=True, echo=False, 
+report(loss='cross', l=0, eta=0.001, n_epochs=40, n_batches=100)
 ```
 
+**Model 3** - Add regularization to the loss function
 ```python, term=True, echo=False, 
-report(loss='cross', l=0, eta=0.1, n_epochs=40, n_batches=100, shuffle=False)
+report(loss='cross', l=0.1, eta=0.001, n_epochs=40, n_batches=100)
 ```
 
+**Model 4** - Further increase of the regularization
 ```python, term=True, echo=False, 
-report(loss='cross', l=0.1, eta=0.001, n_epochs=40, n_batches=100, shuffle=False)
-```
-
-```python, term=True, echo=False, 
-report(loss='cross', l=1, eta=0.001, n_epochs=40, n_batches=100, shuffle=False)
+report(loss='cross', l=1, eta=0.001, n_epochs=40, n_batches=100)
 ```
 
 
 ## The effect of regularization and learning rate
 
-The parameter $\lambda$ controls the degree of the regularization in the model.
-The regularization adds a penalty term to the cost function. Because the objective is to minimize the
-cost function, the regularization will effectively penalize the function for large weights. 
-This will force the weights closer to zero, resulting in a simpler network which is slightly underfitted 
+Regularization adds a penalty term to the cost function, where the parameter $\lambda$ is used to control the degree 
+of the regularization in the model. Because the objective is to minimize the cost function, the regularization will effectively
+penalize the function for large weights. This will force the weights closer to zero, resulting in a simpler network which is slightly underfitted 
 to the training data. Since regularization helps with overfitting, a model with regularization should generalize
-better to new data.
+better to new data. This can be seen in the graphs produced earlier where the gap between the training and validation accuracy is larger when
+there is no regularization used compared to the cases when it is used.
 
 
-The learning rate $\eta$ controls how quickly the model adjusts to the data. It is the 'step size' when updating the 
-weights and bias. As such, a smaller $\eta$ requires more training epochs for the model to converge, while a larger learning 
+The learning rate $\eta$ controls how quickly the model adjusts to the data. It is basically the 'step size' used when calculating the 
+new weights and bias in each epoch. As such, a smaller $\eta$ will require more training epochs for the model to converge, while a larger learning 
 rate results in a faster convergence in fewer training epochs. However, a learning rate that is too large may cause the model to 
-very quickly adapt to a suboptimal solution or to oscillate rather violently around what would be the converged solution.
+very quickly adapt to a suboptimal solution or may cause it ti oscillate rather violently around what would be the converged solution.
 It is therefore important that one takes the time to finely tune the learning rate in order to get a model that behaves and performs well.  
 
 
+## Optimize the performance of the network
+Now we make some changes to see if we can increase the performance of the network. There are many possible options
+to consider but I will mainly focus on
+
+* Add some decay to the learning rate parameter after each epoch
+* Train for a longer time
+* Shuffle the order of the training data batch in the beginning of each epoch
+* Add geometric and photometric jitter to the training samples
+
+The results from these attempts are then compared to the currently best performing configuration (Model 3),
+which has a 39.01% prediction accuracy on the test data. 
+
+
+### Adding decay to the learning rate
+The parameters used to train this model are kept constant and identical to model 3 while introducing a decay rate
+to the learning rate. The rate of decay is set to 0.95, meaning that the learning rate decays by 5% in each epoch.
+```python, term=True, echo=False, 
+report(loss='cross', l=0.1, eta=0.01, n_epochs=40, n_batches=100, decay=0.95)
+```
+This gave a small performance boost, an increase with 0.32 percentage points of the accuracy
+on the test data, relative to model 3.
+
+### Train for a longer time
+
+Take the best performing model (3) and increase the number of training epochs from 40 to 500.
+```python, term=True, echo=False, 
+report(loss='cross', l=0.1, eta=0.001, n_epochs=500, n_batches=100)
+```
+This also gave a slightly larger performance boost, about 0.54 percentage point increase of the accuracy on the
+test data, relative to model 3.
+
+### Shuffle the training data
+
+The parameters used to train this model are kept constant and identical to model 3 while introducing shuffling of the training data
+at each epoch.
+```python, term=True, echo=False, 
+report(loss='cross', l=0.1, eta=0.001, n_epochs=40, n_batches=100, shuffle=True)
+```
+Shuffling the training data at each epoch gave a slight performance boost, 0.22 percentage point increase in accuracy on test data 
+relative to model 3.
+
+### Add noise to training data
+By adding noise to the data will make it more difficult for the network to make a precise fit
+to the training data and will therefore reduce the risk of overfitting the model.
+As such, we should see similar results between a model that is trained with L2 regularization and 
+a model that has no L2 regularization but has noise added to the training data.
+
+
+Now adding gaussian noise with mean 0 and standard deviation 0.01 to the training batches.
+Here's an example of what this does to the images.
+```python, term=True, echo=False, 
+plot_images('gaussian')
+```
+
+The result when adding gaussian noise to the training data.
+```python, term=True, echo=False, 
+report(loss='cross', l=0.0, eta=0.001, n_epochs=40, n_batches=100, noise='gaussian')
+```
+
+Now we also try to add some salt&pepper noise to the training batches. This will randomly set some pixels to either 0 or 1.
+Here's an example of what this does to the images.
+```python, term=True, echo=False, 
+plot_images('s&p')
+```
+This is the result when training with salt&pepper noise.
+```python, term=True, echo=False, 
+report(loss='cross', l=0.0, eta=0.001, n_epochs=40, n_batches=100, noise='s&p')
+```
+The models trained with noise added and no regularization showed similar results in terms of the accuracies on
+the test and training data as models that has some regularization introduced.
+
+
+Now using what we've learned, we'll combine some of the tricks from above and tune our hyperparameters to see 
+if we can get even better performance. We'll train the model for a longer time and add a decay to the learning rate.
+After some trial and error with the parameter values, the best performing model was chosen as
+
+
+```python, term=True, echo=False, 
+report(loss='cross', l=0.1, eta=0.04, n_epochs=100, n_batches=500, shuffle=False, decay=0.95)
+```
+Where the best accuracy obtained on the test data is 39.89%.
+
+
+## Train the network by minimizing the SVM multi-class loss
+
+The SVM multi-class loss function with L2 regularization is given by
+
+
+$$L_{svm}(D,W,b) = \frac{1}{|D|} \sum_{(\mathbf{x},y)} \sum_{j=1, j\neq y} max(0, s_{i}(\mathbf{x},W,b) - s_{y}(\mathbf{x},W,b) + 1) + \lambda \sum_{i,j}W^{2}_{ij}$$
+
+Where $s_{j}(\mathbf{x},W_{j},b_{j}) = W^{T}_{j}\mathbf{x} + b_{j} $ is the score function.
+Once the methods for calculating the loss function and the corresponding gradients have been implemented we're ready to test the model.
+The same parameters are used as when the minimization was done with respect to the cross-entropy loss function in order to make a comparison
+between the two approaches. The figures below show the results obtained.
+
+
+**Model 1**
+```python, term=True, echo=False,
+report(loss='svm', l=0, eta=0.1, n_epochs=40, n_batches=100, shuffle=False)
+```
+
+**Model 2** - Decrease the learning rate
+```python, term=True, echo=False, 
+report(loss='svm', l=0, eta=0.001, n_epochs=40, n_batches=100, shuffle=False)
+```
+
+**Model 3** - Add regularization to the loss function
+```python, term=True, echo=False, 
+report(loss='svm', l=0.1, eta=0.001, n_epochs=40, n_batches=100, shuffle=False)
+```
+
+**Model 4** - Further increase of the regularization
+```python, term=True, echo=False, 
+report(loss='svm', l=1, eta=0.001, n_epochs=40, n_batches=100, shuffle=False)
+```
+
+## Conclusions
+Comparing the performance of the model when minimizing the SVM multi-class loss vs the cross-entropy loss we can draw some conclusions. 
+First, the SVM loss models 1-3 seem to suffer from overfitting as the accuracy on the training set continues to increase while it has leveled
+out for the validation set. As such they seem to require more aggressive regularization than the cross-entropy loss models in order to avoid overfitting.
+
+Secondly, the accuracies of the models that minimize the svm loss are slightly lower (by about 2 percentage points) than their cross-entropy counterparts. 
+This can likely be addressed by fine-tuning the parameters for the svm loss, which should allow those models to perform approximately the same as the models 
+that minimize the cross-entropy loss.
