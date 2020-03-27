@@ -1,8 +1,6 @@
 # DD2424 Deep Learning in Data Science - Assignment 1
 
 
-
-
 ## Introduction
 The goal of this assignment is to train and evaluate the performance of a *single layer neural network* in order to
 classify images from the [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html) dataset.
@@ -22,11 +20,10 @@ mini-batch gradient descent which requires us to calculate the gradients of the 
 A analytical approach is used to compute the gradients of the weights and bias. While it is relatively efficient to compute, it is less accurate
 than gradients obtained via numerical methods. Because of this one has to first verify that the difference between the two approaches is relatively small.
 The relative error is defined as $$ \frac{|g_{a} - g_{b}|}{ max(\epsilon, |g_{a}| - |g_{b}|) } $$
-Where \(|g_{a}|\) is the analytically computed gradient and \(|g_{n}|\) is the numerically computed gradient and $\epsilon$ is a very small positive number.
+Where $ |g_{a}| $ is the analytically computed gradient and $ |g_{n}| $ is the numerically computed gradient and $ \epsilon $ is a very small positive number.
 
 A comparison is then made between the analytical gradient and the gradients computed with the *Finite* and *Central-*difference methods, respectively.
 The results are shown in the table below,
-
 
 
 
@@ -35,7 +32,6 @@ The results are shown in the table below,
 | Analytical                     | -                |   2.77556e-18 |    -0.301867 |     0.329779 |
 | Finite difference (Numerical)  | 3.76084e-07      |   4.26082e-08 |    -0.301867 |     0.329779 |
 | Central difference (Numerical) | 1.42832e-09      |  -1.73473e-13 |    -0.301867 |     0.329779 |
-
 
 
 

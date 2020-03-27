@@ -102,3 +102,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# data sets
+A1/cifar-10-batches-py/
+A2/cifar-10-batches-py/
+A3/cifar-10-batches-py/

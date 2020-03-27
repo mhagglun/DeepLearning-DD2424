@@ -15,19 +15,14 @@ class Network():
     A simple one layer network.
     """
 
-    def __init__(self, input_dim, output_dim, loss='cross', l=0):
+    def __init__(self, input_dim, output_dim, l=0):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.W = np.random.normal(0, 0.01, (output_dim, input_dim))
         self.b = np.random.normal(0, 0.01, (output_dim, 1))
         self.l = l
-        if loss == 'svm':
-            self.compute_cost = self.compute_svm_cost
-            self.compute_gradients = self.compute_svm_gradients
-        else:
-            self.compute_cost = self.compute_cross_cost
-            self.compute_gradients = self.compute_cross_gradients
+
 
     def evaluate_classifier(self, X, W=None, b=None):
         """
@@ -43,7 +38,7 @@ class Network():
         e = np.exp(s)
         return e / np.sum(e, axis=0)
 
-    def compute_cross_cost(self, X, Y, W=None, b=None):
+    def compute_cost(self, X, Y, W=None, b=None):
         """
         Calculates the cost of the loss function in the cross-entropy sense 
         for the given data, weights and bias.
@@ -61,30 +56,6 @@ class Network():
 
         return loss+regularization
 
-    def compute_svm_cost(self, X, Y, W=None, b=None):
-        """
-        Calculates the cost of the loss function in the SVM multi-class sense 
-        for the given data, weights and bias.
-        """
-
-        if W is None:
-            W = self.W
-
-        if b is None:
-            b = self.b
-
-        N = X.shape[1]
-        s = W.dot(X) + b
-        sy = repmat(s.T[Y.T == 1], Y.shape[0], 1)
-
-        margins = np.maximum(0, s - sy + 1)
-        margins[Y == 1] = 0
-        loss = margins.sum() / N
-
-        regularization = 0.5 * self.l * np.sum(W**2)
-
-        return loss + regularization
-
     def compute_accuracy(self, X, y):
         """
         Calculates the prediction accuracy of the network on the data X 
@@ -95,7 +66,7 @@ class Network():
 
         return 100*np.sum(P == y)/y.shape[0]
 
-    def compute_cross_gradients(self, X, Y):
+    def compute_gradients(self, X, Y):
         """
         Computes the gradients of the weights and bias used to minimize
         the cross-entropy loss.
@@ -110,33 +81,8 @@ class Network():
 
         return gradW, gradb
 
-    def compute_svm_gradients(self, X, Y):
-        """
-        Computes the gradients of the weights and bias which are used
-        to minimize the SVM multi-class loss.
-        """
-        N = X.shape[1]
-        y = np.argmax(Y, axis=0)
-        s = self.W.dot(X) + self.b
-        sy = repmat(s.T[Y.T == 1], Y.shape[0], 1)
 
-        margins = np.maximum(0, s - sy + 1)
-        margins[Y == 1] = 0
-        margins[margins > 0] = 1
-
-        count = np.sum(margins, axis=0)
-
-        for i in range(margins.shape[1]):
-            # Each element should be placed in corresponding Y==1 position
-            margins[y[i], i] = -count[:, i]
-
-        grad_W = np.dot(margins, X.T) / N + self.l * self.W
-        grad_b = np.reshape(np.sum(margins, axis=1) /
-                            margins.shape[1], self.b.shape)
-
-        return grad_W, grad_b
-
-    def train(self, training_data, validation_data, eta, n_epochs, n_batches, shuffle=False, decay=1, noise=None):
+    def train(self, training_data, validation_data, eta, n_epochs, n_batches, noise=None):
         """
         Train the network by calculating the weights and bias that minimizes the cost function
         using the Mini-Batch Gradient Descent approach.
@@ -154,13 +100,6 @@ class Network():
         accuracy_val[0, :] = self.compute_accuracy(Xval, yval)
 
         for i in range(1, n_epochs):
-
-            if(shuffle):
-                rand = np.random.permutation(X.shape[1])
-                X = X[:, rand]
-                Y = Y[:, rand]
-                y = np.asarray([y[idx] for idx in rand])
-
             for j in range(1, int(X.shape[1]/n_batches)+1):
                 jstart = (j-1) * n_batches + 1
                 jend = j * n_batches
@@ -177,8 +116,6 @@ class Network():
 
                 self.W -= eta * gradW
                 self.b -= eta * gradb
-
-            eta *= decay
 
             cost_train[i, :] = self.compute_cost(X, Y)
             cost_val[i, :] = self.compute_cost(Xval, Yval)
@@ -305,7 +242,7 @@ def compute_grads_num_slow(network, X, Y, h):
     return gradW, gradb
 
 
-def check_gradient(loss='cross', batchSize=20, tol=1e-6):
+def check_gradient(batchSize=20, tol=1e-5):
     """
     Method used to check that the simple gradient is accurate by comparing with
     a more computer intensive but accurate method.
@@ -324,7 +261,7 @@ def check_gradient(loss='cross', batchSize=20, tol=1e-6):
     # Normalize the data w.r.t training data
     X = dataset.normalize(X, mean, std)
 
-    network = Network(dataset.input_dim, dataset.num_labels, loss=loss)
+    network = Network(dataset.input_dim, dataset.num_labels)
 
     gradW, gradb = network.compute_gradients(
         X[:, :batchSize], Y[:, :batchSize])
@@ -419,14 +356,14 @@ def plot_performance(cost_train, cost_val, accuracy_train, accuracy_val, filenam
         plt.close()
 
 
-def model_summary(dataset, training_data, validation_data, test_data, parameters, loss='cross', save=False):
+def model_summary(dataset, training_data, validation_data, test_data, parameters, save=False):
     """
     Generates a summary of the network performance based on the given data and parameters.
     """
 
     # Initialize the network
     network = Network(dataset.input_dim, dataset.num_labels,
-                      l=parameters['l'], loss=loss)
+                      l=parameters['l'])
 
     # Check initial accuracy
     init_acc_train = network.compute_accuracy(
@@ -482,8 +419,7 @@ def model_summary(dataset, training_data, validation_data, test_data, parameters
     print(model_performance)
 
     if save:
-        filename = loss+"_lambda" + \
-            str(parameters['l'])+"_eta"+str(parameters['eta'])
+        filename = str(parameters['l'])+"_eta"+str(parameters['eta'])
         with open('summary_{}.txt'.format(filename), 'w') as f:
             f.write(model_parameters + model_performance)
     else:
@@ -497,7 +433,7 @@ def model_summary(dataset, training_data, validation_data, test_data, parameters
 # -------------------------------------------------------------------------#
 
 
-def report(loss='cross', l=0.0, eta=0.001, n_epochs=40, n_batches=100, shuffle=False, decay=1, noise=None, save=False):
+def report(l=0.0, eta=0.001, n_epochs=40, n_batches=100, noise=None, save=False):
     """
     Method that loads and preprocesses the data and then trains the model for the given parameters in order to generate
     a summary of the model performance.
@@ -516,10 +452,10 @@ def report(loss='cross', l=0.0, eta=0.001, n_epochs=40, n_batches=100, shuffle=F
     test_data['X'] = dataset.normalize(test_data['X'], mean, std)
 
     parameters = {'l': l,  'eta': eta,   'n_epochs': n_epochs,
-                  'n_batches': n_batches,   'shuffle': shuffle,  'decay': decay,     'noise': noise}
+             'n_batches': n_batches,    'noise': noise}
 
     model_summary(dataset, training_data, validation_data,
-                  test_data, parameters, loss=loss, save=save)
+                  test_data, parameters, save=save)
 
 
 """ Example use """
