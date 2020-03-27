@@ -1,8 +1,6 @@
 # DD2424 Deep Learning in Data Science - Assignment 1
 
 
-
-
 ## Introduction
 The goal of this assignment is to train and evaluate the performance of a *single layer neural network* in order to
 classify images from the [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html) dataset.
@@ -22,11 +20,10 @@ mini-batch gradient descent which requires us to calculate the gradients of the 
 A analytical approach is used to compute the gradients of the weights and bias. While it is relatively efficient to compute, it is less accurate
 than gradients obtained via numerical methods. Because of this one has to first verify that the difference between the two approaches is relatively small.
 The relative error is defined as <p align="center"><img src="/A1/tex/4b587f559e3b8052900845b41eb936a7.svg?invert_in_darkmode&sanitize=true" align=middle width=127.8732312pt height=38.83491479999999pt/></p>
-Where \(|g_{a}|\) is the analytically computed gradient and \(|g_{n}|\) is the numerically computed gradient and <img src="/A1/tex/7ccca27b5ccc533a2dd72dc6fa28ed84.svg?invert_in_darkmode&sanitize=true" align=middle width=6.672392099999992pt height=14.15524440000002pt/> is a very small positive number.
+Where <img src="/A1/tex/43a8b7364a786d5bff9713a8a832ddd6.svg?invert_in_darkmode&sanitize=true" align=middle width=24.925325699999988pt height=24.65753399999998pt/> is the analytically computed gradient and <img src="/A1/tex/42e7d66052bedc065fdbfe57e3c0b788.svg?invert_in_darkmode&sanitize=true" align=middle width=25.92096869999999pt height=24.65753399999998pt/> is the numerically computed gradient and <img src="/A1/tex/06db9832b5619a8ee01ca192e543c5b7.svg?invert_in_darkmode&sanitize=true" align=middle width=6.672392099999992pt height=14.15524440000002pt/> is a very small positive number.
 
 A comparison is then made between the analytical gradient and the gradients computed with the *Finite* and *Central-*difference methods, respectively.
 The results are shown in the table below,
-
 
 
 
@@ -35,7 +32,6 @@ The results are shown in the table below,
 | Analytical                     | -                |   2.77556e-18 |    -0.301867 |     0.329779 |
 | Finite difference (Numerical)  | 3.76084e-07      |   4.26082e-08 |    -0.301867 |     0.329779 |
 | Central difference (Numerical) | 1.42832e-09      |  -1.73473e-13 |    -0.301867 |     0.329779 |
-
 
 
 
