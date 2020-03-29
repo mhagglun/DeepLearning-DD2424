@@ -1,5 +1,5 @@
 import pickle
-
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
@@ -7,6 +7,7 @@ from skimage import util
 from numpy.matlib import repmat
 from tabulate import tabulate
 
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sns.set_style('darkgrid')
 
 
@@ -168,7 +169,6 @@ class Network():
                 Xbatch = X[:, jstart:jend]
                 Ybatch = Y[:, jstart:jend]
 
-                # Apply noise here
                 if noise is not None:
                     Xbatch = util.random_noise(
                         Xbatch, mode=noise, seed=None, clip=True)
@@ -242,8 +242,8 @@ class CIFAR:
         return data
 
 
-""" Functions for model comparison and presentation of the results. """
 
+""" Functions for model comparison and presentation of the results. """
 
 def compute_grads_num(network, X, Y, h):
     """
@@ -462,7 +462,6 @@ def model_summary(dataset, training_data, validation_data, test_data, parameters
             'n_epochs'], parameters['n_batches'], parameters['shuffle'],
         parameters['decay'], parameters['noise'])
 
-    # Compute accuracy on test data
     accuracy_test = network.compute_accuracy(test_data['X'], test_data['y'])
     cost_test = network.compute_cost(test_data['X'], test_data['Y'])
 
@@ -520,10 +519,3 @@ def report(loss='cross', l=0.0, eta=0.001, n_epochs=40, n_batches=100, shuffle=F
 
     model_summary(dataset, training_data, validation_data,
                   test_data, parameters, loss=loss, save=save)
-
-
-""" Example use """
-# plot_images()
-# check_gradient()
-# plot_images('gaussian')
-# report(loss='cross', l=0.1, eta=0.035, n_epochs=100, n_batches=500, shuffle=False, decay=0.94)

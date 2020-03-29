@@ -4,7 +4,8 @@
 %matplotlib inline
 import os
 import sys
-sys.path.append(os.getcwd())
+sys.path.append(os.getcwd() + '/..')
+# os.chdir((os.getcwd() + '/..'))
 from assignment1 import *
 ```
 
@@ -27,7 +28,7 @@ mini-batch gradient descent which requires us to calculate the gradients of the 
 A analytical approach is used to compute the gradients of the weights and bias. While it is relatively efficient to compute, it is less accurate
 than gradients obtained via numerical methods. Because of this one has to first verify that the difference between the two approaches is relatively small.
 The relative error is defined as $$ \frac{|g_{a} - g_{n}|}{ max(\epsilon, |g_{a}| - |g_{n}|) } $$
-Where $|g_{a}|$ is the analytically computed gradient and $|g_{n}|$ is the numerically computed gradient and $\epsilon$ is a very small positive number.
+Where $\mathbf{|g_{a}}|$ is the analytically computed gradient and $\mathbf{|g_{n}|}$ is the numerically computed gradient and $\mathbf{\epsilon}$ is a very small positive number.
 
 A comparison is then made between the analytical gradient and the gradients computed with the *Finite* and *Central-*difference methods, respectively.
 The results are shown in the table below,
@@ -177,7 +178,7 @@ Where the best accuracy obtained on the test data is 39.89%.
 The SVM multi-class loss function with L2 regularization is given by
 
 
-$$L_{svm}(D,W,b) = \frac{1}{|D|} \sum_{(\mathbf{x},y)} \sum_{j=1, j\neq y} max(0, s_{i}(\mathbf{x},W,b) - s_{y}(\mathbf{x},W,b) + 1) + \lambda \sum_{i,j}W^{2}_{ij}$$
+$$L_{svm}(D,W,b) = \frac{1}{|D|} \sum_{(\mathbf{x},y)} \sum_{j=1, j\neq y} max(0, s_{j}(\mathbf{x},W,b) - s_{y}(\mathbf{x},W,b) + 1) + \lambda \sum_{i,j}W^{2}_{ij}$$
 
 Where $s_{j}(\mathbf{x},W_{j},b_{j}) = W^{T}_{j}\mathbf{x} + b_{j} $ is the score function.
 Once the methods for calculating the loss function and the corresponding gradients have been implemented we're ready to test the model.
@@ -205,11 +206,29 @@ report(loss='svm', l=0.1, eta=0.001, n_epochs=40, n_batches=100, shuffle=False)
 report(loss='svm', l=1, eta=0.001, n_epochs=40, n_batches=100, shuffle=False)
 ```
 
+The final accuracy on the test data for the chosen parameters and the two different loss-functions are shown in the tables below.
+
+|     loss       |   $\lambda$   |    $\eta$    |  Epochs     |   Batches       | Accuracy on test data |
+|----------------|---------------|--------------|-------------|-----------------|-----------------------|
+|     cross      |      0.0      |     0.1      |      40     |       100       |        28.70%         |
+|   **cross**    |    **0.0**    |  **0.001**   |    **40**   |     **100**     |      **38.86%**       |
+|   **cross**    |    **0.1**    |  **0.001**   |    **40**   |     **100**     |      **39.01%**       |
+|   **cross**    |    **1.0**    |  **0.001**   |    **40**   |     **100**     |      **37.50%**       |
+
+
+|     loss       | $\lambda$ | $\eta$   |  Epochs  |   Batches   | Accuracy on test data |
+|----------------|-----------|----------|----------|-------------|-----------------------|
+|   **svm**      |  **0.0**  | **0.1**  |  **40**  |   **100**   |      **30.04%**       |
+|     svm        |    0.0    |  0.001   |    40    |     100     |        35.35%         |
+|     svm        |    0.1    |  0.001   |    40    |     100     |        35.78%         |
+|     svm        |    1.0    |  0.001   |    40    |     100     |        36.62%         |
+
+
 ## Conclusions
 Comparing the performance of the model when minimizing the SVM multi-class loss vs the cross-entropy loss we can draw some conclusions. 
-First, the SVM loss models 1-3 seem to suffer from overfitting as the accuracy on the training set continues to increase while it has leveled
+The svm-models 1,2 and 3 seem to suffer from overfitting as the accuracy on the training set continues to increase while it has leveled
 out for the validation set. As such they seem to require more aggressive regularization than the cross-entropy loss models in order to avoid overfitting.
-
-Secondly, the accuracies of the models that minimize the svm loss are slightly lower (by about 2 percentage points) than their cross-entropy counterparts. 
-This can likely be addressed by fine-tuning the parameters for the svm loss, which should allow those models to perform approximately the same as the models 
-that minimize the cross-entropy loss.
+It is also clear from the table above that the prediction accuracies on the test data are slightly lower for the svm-models, by about 1-2 percentage points, 
+relative to the cross-entropy counterparts. This can likely be addressed by fine-tuning the parameters for the svm loss, which should allow those models to 
+perform approximately the same as the models that minimize the cross-entropy loss. All things considered I think the cross-entropy loss is the better alternative 
+due to the slight performance advantage and because the gradient is easy to implement and efficient to compute.

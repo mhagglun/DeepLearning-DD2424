@@ -1,13 +1,15 @@
 # DD2424 Deep Learning in Data Science - Assignment 1
 
 
+
+
 ## Introduction
 The goal of this assignment is to train and evaluate the performance of a *single layer neural network* in order to
 classify images from the [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html) dataset.
 
 Here is a sample from the data set of the images that we'll attempt to classify.
 
-![](figures/report_figure2_1.png)
+![](report/figures/report_figure2_1.png)
 
 
 In the first part of the assignment we'll use the cross-entropy loss as our cost function which we'll try to minimize.
@@ -19,11 +21,12 @@ mini-batch gradient descent which requires us to calculate the gradients of the 
 
 A analytical approach is used to compute the gradients of the weights and bias. While it is relatively efficient to compute, it is less accurate
 than gradients obtained via numerical methods. Because of this one has to first verify that the difference between the two approaches is relatively small.
-The relative error is defined as $$ \frac{|g_{a} - g_{b}|}{ max(\epsilon, |g_{a}| - |g_{b}|) } $$
-Where $ |g_{a}| $ is the analytically computed gradient and $ |g_{n}| $ is the numerically computed gradient and $ \epsilon $ is a very small positive number.
+The relative error between the analytical and numerical gradient is defined as $$ \frac{|g_{a} - g_{n}|}{ max(\epsilon, |g_{a}| - |g_{n}|) } $$
+
 
 A comparison is then made between the analytical gradient and the gradients computed with the *Finite* and *Central-*difference methods, respectively.
 The results are shown in the table below,
+
 
 
 
@@ -32,7 +35,6 @@ The results are shown in the table below,
 | Analytical                     | -                |   2.77556e-18 |    -0.301867 |     0.329779 |
 | Finite difference (Numerical)  | 3.76084e-07      |   4.26082e-08 |    -0.301867 |     0.329779 |
 | Central difference (Numerical) | 1.42832e-09      |  -1.73473e-13 |    -0.301867 |     0.329779 |
-
 
 
 
@@ -70,8 +72,8 @@ Test data:
    cost (final):                6.95
 ```
 
-![](figures/report_figure4_1.png)\
-![](figures/report_figure4_2.png)
+![](report/figures/report_figure4_1.png)\
+![](report/figures/report_figure4_2.png)
 
 The small images above represents the weights or the 'image templates' for each class that the model
 has learned during training. Now we'll make some small adjustments to the model parameters and observe the results. 
@@ -101,8 +103,8 @@ Test data:
    cost (final):                1.76
 ```
 
-![](figures/report_figure5_1.png)\
-![](figures/report_figure5_2.png)
+![](report/figures/report_figure5_1.png)\
+![](report/figures/report_figure5_2.png)
 
 
 **Model 3** - Add regularization to the loss function
@@ -129,8 +131,8 @@ Test data:
    cost (final):                1.88
 ```
 
-![](figures/report_figure6_1.png)\
-![](figures/report_figure6_2.png)
+![](report/figures/report_figure6_1.png)\
+![](report/figures/report_figure6_2.png)
 
 
 **Model 4** - Further increase of the regularization
@@ -157,8 +159,8 @@ Test data:
    cost (final):                1.94
 ```
 
-![](figures/report_figure7_1.png)\
-![](figures/report_figure7_2.png)
+![](report/figures/report_figure7_1.png)\
+![](report/figures/report_figure7_2.png)
 
 
 
@@ -219,8 +221,8 @@ Test data:
    cost (final):                1.84
 ```
 
-![](figures/report_figure8_1.png)\
-![](figures/report_figure8_2.png)
+![](report/figures/report_figure8_1.png)\
+![](report/figures/report_figure8_2.png)
 
 This gave a small performance boost, an increase with 0.32 percentage points of the accuracy
 on the test data, relative to model 3.
@@ -251,8 +253,8 @@ Test data:
    cost (final):                1.84
 ```
 
-![](figures/report_figure9_1.png)\
-![](figures/report_figure9_2.png)
+![](report/figures/report_figure9_1.png)\
+![](report/figures/report_figure9_2.png)
 
 This also gave a slightly larger performance boost, about 0.54 percentage point increase of the accuracy on the
 test data, relative to model 3.
@@ -285,8 +287,8 @@ Test data:
    cost (final):                1.88
 ```
 
-![](figures/report_figure10_1.png)\
-![](figures/report_figure10_2.png)
+![](report/figures/report_figure10_1.png)\
+![](report/figures/report_figure10_2.png)
 
 Shuffling the training data at each epoch gave a slight performance boost, 0.22 percentage point increase in accuracy on test data 
 relative to model 3.
@@ -301,7 +303,7 @@ a model that has no L2 regularization but has noise added to the training data.
 Now adding gaussian noise with mean 0 and standard deviation 0.01 to the training batches.
 Here's an example of what this does to the images.
 
-![](figures/report_figure11_1.png)
+![](report/figures/report_figure11_1.png)
 
 
 The result when adding gaussian noise to the training data.
@@ -329,14 +331,14 @@ Test data:
    cost (final):                1.81
 ```
 
-![](figures/report_figure12_1.png)\
-![](figures/report_figure12_2.png)
+![](report/figures/report_figure12_1.png)\
+![](report/figures/report_figure12_2.png)
 
 
 Now we also try to add some salt&pepper noise to the training batches. This will randomly set some pixels to either 0 or 1.
 Here's an example of what this does to the images.
 
-![](figures/report_figure13_1.png)
+![](report/figures/report_figure13_1.png)
 
 This is the result when training with salt&pepper noise.
 
@@ -363,8 +365,8 @@ Test data:
    cost (final):                1.82
 ```
 
-![](figures/report_figure14_1.png)\
-![](figures/report_figure14_2.png)
+![](report/figures/report_figure14_1.png)\
+![](report/figures/report_figure14_2.png)
 
 The models trained with noise added and no regularization showed similar results in terms of the accuracies on
 the test and training data as models that has some regularization introduced.
@@ -399,8 +401,8 @@ Test data:
    cost (final):                1.83
 ```
 
-![](figures/report_figure15_1.png)\
-![](figures/report_figure15_2.png)
+![](report/figures/report_figure15_1.png)\
+![](report/figures/report_figure15_2.png)
 
 Where the best accuracy obtained on the test data is 39.89%.
 
@@ -410,7 +412,7 @@ Where the best accuracy obtained on the test data is 39.89%.
 The SVM multi-class loss function with L2 regularization is given by
 
 
-$$L_{svm}(D,W,b) = \frac{1}{|D|} \sum_{(\mathbf{x},y)} \sum_{j=1, j\neq y} max(0, s_{i}(\mathbf{x},W,b) - s_{y}(\mathbf{x},W,b) + 1) + \lambda \sum_{i,j}W^{2}_{ij}$$
+$$L_{svm}(D,W,b) = \frac{1}{|D|} \sum_{(\mathbf{x},y)} \sum_{j=1, j\neq y} max(0, s_{j}(\mathbf{x},W,b) - s_{y}(\mathbf{x},W,b) + 1) + \lambda \sum_{i,j}W^{2}_{ij}$$
 
 Where $s_{j}(\mathbf{x},W_{j},b_{j}) = W^{T}_{j}\mathbf{x} + b_{j} $ is the score function.
 Once the methods for calculating the loss function and the corresponding gradients have been implemented we're ready to test the model.
@@ -442,8 +444,8 @@ Test data:
    cost (final):                41.43
 ```
 
-![](figures/report_figure16_1.png)\
-![](figures/report_figure16_2.png)
+![](report/figures/report_figure16_1.png)\
+![](report/figures/report_figure16_2.png)
 
 
 **Model 2** - Decrease the learning rate
@@ -470,8 +472,8 @@ Test data:
    cost (final):                4.86
 ```
 
-![](figures/report_figure17_1.png)\
-![](figures/report_figure17_2.png)
+![](report/figures/report_figure17_1.png)\
+![](report/figures/report_figure17_2.png)
 
 
 **Model 3** - Add regularization to the loss function
@@ -498,8 +500,8 @@ Test data:
    cost (final):                5.01
 ```
 
-![](figures/report_figure18_1.png)\
-![](figures/report_figure18_2.png)
+![](report/figures/report_figure18_1.png)\
+![](report/figures/report_figure18_2.png)
 
 
 **Model 4** - Further increase of the regularization
@@ -526,15 +528,33 @@ Test data:
    cost (final):                5.06
 ```
 
-![](figures/report_figure19_1.png)\
-![](figures/report_figure19_2.png)
+![](report/figures/report_figure19_1.png)\
+![](report/figures/report_figure19_2.png)
+
+
+The final accuracy on the test data for the chosen parameters and the two different loss-functions are shown in the tables below.
+
+|     loss       |   $\lambda$   |    $\eta$    |  Epochs     |   Batches       | Accuracy on test data |
+|----------------|---------------|--------------|-------------|-----------------|-----------------------|
+|     cross      |      0.0      |     0.1      |      40     |       100       |        28.70%         |
+|   **cross**    |    **0.0**    |  **0.001**   |    **40**   |     **100**     |      **38.86%**       |
+|   **cross**    |    **0.1**    |  **0.001**   |    **40**   |     **100**     |      **39.01%**       |
+|   **cross**    |    **1.0**    |  **0.001**   |    **40**   |     **100**     |      **37.50%**       |
+
+
+|     loss       | $\lambda$ | $\eta$   |  Epochs  |   Batches   | Accuracy on test data |
+|----------------|-----------|----------|----------|-------------|-----------------------|
+|   **svm**      |  **0.0**  | **0.1**  |  **40**  |   **100**   |      **30.04%**       |
+|     svm        |    0.0    |  0.001   |    40    |     100     |        35.35%         |
+|     svm        |    0.1    |  0.001   |    40    |     100     |        35.78%         |
+|     svm        |    1.0    |  0.001   |    40    |     100     |        36.62%         |
 
 
 ## Conclusions
 Comparing the performance of the model when minimizing the SVM multi-class loss vs the cross-entropy loss we can draw some conclusions. 
-First, the SVM loss models 1-3 seem to suffer from overfitting as the accuracy on the training set continues to increase while it has leveled
+The svm-models 1,2 and 3 seem to suffer from overfitting as the accuracy on the training set continues to increase while it has leveled
 out for the validation set. As such they seem to require more aggressive regularization than the cross-entropy loss models in order to avoid overfitting.
-
-Secondly, the accuracies of the models that minimize the svm loss are slightly lower (by about 2 percentage points) than their cross-entropy counterparts. 
-This can likely be addressed by fine-tuning the parameters for the svm loss, which should allow those models to perform approximately the same as the models 
-that minimize the cross-entropy loss.
+It is also clear from the table above that the prediction accuracies on the test data are slightly lower for the svm-models, by about 1-2 percentage points, 
+relative to the cross-entropy counterparts. This can likely be addressed by fine-tuning the parameters for the svm loss, which should allow those models to 
+perform approximately the same as the models that minimize the cross-entropy loss. All things considered I think the cross-entropy loss is the better alternative 
+due to the slight performance advantage and because the gradient is easy to implement and efficient to compute.
