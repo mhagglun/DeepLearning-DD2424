@@ -5,82 +5,94 @@ import numpy as np
 import seaborn as sns
 from skimage import util
 from numpy.matlib import repmat
+from tqdm import tqdm
 from tabulate import tabulate
 
 sns.set_style('darkgrid')
 
 
 class Network():
-    """
-    A simple one layer network.
-    """
 
-    def __init__(self, input_dim, output_dim, l=0):
+    def __init__(self, input_dim, output_dim, hidden_layers=[50], l=0):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
-        self.W = np.random.normal(0, 0.01, (output_dim, input_dim))
-        self.b = np.random.normal(0, 0.01, (output_dim, 1))
+        self.layers = self.initiate_layers(hidden_layers)
         self.l = l
 
-
-    def evaluate_classifier(self, X, W=None, b=None):
+    class Layer:
         """
-        Calculates and returns the softmax of the input weights and bias.
+        The inner class object used to construct the layers of the network.
+        Contains the weights and biases for a layer of the network.
         """
-        if W is None:
-            W = self.W
 
-        if b is None:
-            b = self.b
+        def __init__(self, input_dim, output_dim):
+            super().__init__()
+            self.W = np.random.normal(
+                0, 1 / np.sqrt(input_dim), (output_dim, input_dim))
+            self.b = np.zeros((output_dim, 1))
 
-        s = np.dot(W, X) + b
-        e = np.exp(s)
-        return e / np.sum(e, axis=0)
 
-    def compute_cost(self, X, Y, W=None, b=None):
+    def initiate_layers(self, layer_size):
         """
-        Calculates the cost of the loss function in the cross-entropy sense 
-        for the given data, weights and bias.
+        Sets the layers of the network.
+        Takes a list that contains the number of nodes in each layer and
+        initiates the layers of the network.
         """
-        if W is None:
-            W = self.W
+        num_nodes = np.r_[self.input_dim, layer_size, self.output_dim]
+        layers = []
+        for i in range(len(num_nodes)-1):
+            layers.append(self.Layer(num_nodes[i], num_nodes[i+1]))
 
-        if b is None:
-            b = self.b
+        return layers
 
-        P = self.evaluate_classifier(X, W, b)
+    def forward_pass(self, X, Y):
+        """
+        Calculates and returns the probability, the intermediary activations and the cost
+        of the multi-layer neural network.
+        """
+        h = X
+        activations = [h]
+        loss = 0
+        for layer in self.layers:
+            s = np.dot(layer.W, h) + layer.b
+            h = np.maximum(0, s)
+            activations.append(h)
+            loss += self.l * np.sum(np.power(layer.W, 2))
 
-        loss = np.sum(-np.log(np.multiply(Y, P).sum(axis=0))) / X.shape[1]
-        regularization = self.l * np.sum(self.W**2)
+        P = np.exp(s) / np.sum(np.exp(s), axis=0)
 
-        return loss+regularization
+        loss += np.sum(-np.log(np.multiply(Y, P).sum(axis=0))) / X.shape[1]
 
-    def compute_accuracy(self, X, y):
+        return P, activations, loss
+
+    def backward_pass(self, X, Y, P, activations, eta):
+
+        G = P - Y
+        for i, layer in reversed(list(enumerate(self.layers))):
+            x = activations[i]
+            N = X.shape[1]
+            gradb = G * np.ones((N, 1)) / N
+            gradW = np.dot(G, x.T) / N + 2 * self.l * layer.W
+
+            # Update weights and bias of current layer
+            self.layers[i].W -= eta * gradW
+            self.layers[i].b -= eta * gradb
+
+            # Propagate the gradient backwards
+            G = layer.W.T * G
+            G[x == 0] = 0
+
+    def compute_accuracy(self, X, Y):
         """
         Calculates the prediction accuracy of the network on the data X 
         with weights W and bias b.
         """
-        P = self.evaluate_classifier(X)
+        y = np.argmax(Y, axis=0)
+        P, _, _ = self.forward_pass(X, Y)
         P = np.argmax(P, axis=0)
 
         return 100*np.sum(P == y)/y.shape[0]
-
-    def compute_gradients(self, X, Y):
-        """
-        Computes the gradients of the weights and bias used to minimize
-        the cross-entropy loss.
-        """
-        P = self.evaluate_classifier(X)
-        N = X.shape[1]
-
-        gradient = P - Y
-
-        gradW = gradient.dot(X.T) / N + 2 * self.l * self.W
-        gradb = gradient.dot(np.ones((N, 1))) / N
-
-        return gradW, gradb
-
 
     def train(self, training_data, validation_data, eta, n_epochs, n_batches, noise=None):
         """
@@ -91,15 +103,15 @@ class Network():
         X, Y, y = training_data['X'], training_data['Y'], training_data['y']
         Xval, Yval, yval = validation_data['X'], validation_data['Y'], validation_data['y']
 
-        cost_train, accuracy_train, cost_val, accuracy_val = np.zeros((n_epochs, 1)), np.zeros(
-            (n_epochs, 1)), np.zeros((n_epochs, 1)), np.zeros((n_epochs, 1))
+        cost_train, accuracy_train, cost_val, accuracy_val = np.zeros((n_epochs+1, 1)), np.zeros(
+            (n_epochs+1, 1)), np.zeros((n_epochs+1, 1)), np.zeros((n_epochs+1, 1))
 
-        cost_train[0, :] = self.compute_cost(X, Y)
-        cost_val[0, :] = self.compute_cost(Xval, Yval)
-        accuracy_train[0, :] = self.compute_accuracy(X, y)
-        accuracy_val[0, :] = self.compute_accuracy(Xval, yval)
+        _, _, cost_train[0, :] = self.forward_pass(X, Y)
+        _, _, cost_val[0, :] = self.forward_pass(Xval, Yval)
+        accuracy_train[0, :] = self.compute_accuracy(X, Y)
+        accuracy_val[0, :] = self.compute_accuracy(Xval, Yval)
 
-        for i in range(1, n_epochs):
+        for i in tqdm(range(1, n_epochs+1), desc="Model training progress: "):
             for j in range(1, int(X.shape[1]/n_batches)+1):
                 jstart = (j-1) * n_batches + 1
                 jend = j * n_batches
@@ -107,20 +119,17 @@ class Network():
                 Xbatch = X[:, jstart:jend]
                 Ybatch = Y[:, jstart:jend]
 
-                # Apply noise here
                 if noise is not None:
                     Xbatch = util.random_noise(
                         Xbatch, mode=noise, seed=None, clip=True)
 
-                gradW, gradb = self.compute_gradients(Xbatch, Ybatch)
+                P, activations, loss = self.forward_pass(Xbatch, Ybatch)
 
-                self.W -= eta * gradW
-                self.b -= eta * gradb
-
-            cost_train[i, :] = self.compute_cost(X, Y)
-            cost_val[i, :] = self.compute_cost(Xval, Yval)
-            accuracy_train[i, :] = self.compute_accuracy(X, y)
-            accuracy_val[i, :] = self.compute_accuracy(Xval, yval)
+                self.backward_pass(Xbatch, Ybatch, P, activations, eta)
+            _, _, cost_train[i, :] = self.forward_pass(X, Y)
+            _, _, cost_val[i, :] = self.forward_pass(Xval, Yval)
+            accuracy_train[i, :] = self.compute_accuracy(X, Y)
+            accuracy_val[i, :] = self.compute_accuracy(Xval, Yval)
 
         return cost_train.flatten(), cost_val.flatten(), accuracy_train.flatten(), accuracy_val.flatten()
 
@@ -182,32 +191,61 @@ class CIFAR:
 """ Functions for model comparison and presentation of the results. """
 
 
+def compute_gradients(network, X, Y):
+
+    P, activations, loss = network.forward_pass(X, Y)
+    G = P - Y
+    grad_weights = []
+    grad_bias = []
+    for i, layer in reversed(list(enumerate(network.layers))):
+        x = activations[i]
+        N = X.shape[1]
+        gradb = G * np.ones((N, 1)) / N
+        gradW = np.dot(G, x.T) / N + 2 * network.l * layer.W
+
+        grad_weights.append(gradW)
+        grad_bias.append(gradb)
+
+        # Propagate the gradient backwards
+        G = layer.W.T * G
+        G[x == 0] = 0
+
+    return grad_weights, grad_bias
+
+
 def compute_grads_num(network, X, Y, h):
     """
     A numerical approach based on Finite Difference method to calculate the gradients.
     """
-    W = network.W
-    b = network.b
+    grad_weights = []
+    grad_bias = []
+    for idx, layer in enumerate(network.layers):
+        print('num on layer', idx)
+        W = layer.W
+        b = layer.b
 
-    gradW = np.matlib.zeros(W.shape)
-    gradb = np.matlib.zeros(b.shape)
+        gradW = np.matlib.zeros(W.shape)
+        gradb = np.matlib.zeros(b.shape)
 
-    cost = network.compute_cost(X, Y)
+        _, _, cost = network.forward_pass(X, Y)
 
-    for i in range(b.shape[0]):
-        b_try = np.array(b)
-        b_try[i] += h
-        c2 = network.compute_cost(X, Y, W, b_try)
-        gradb[i] = (c2 - cost) / h
+        for i in tqdm(range(b.shape[0])):
+            network.layers[idx].b[i] += h
+            _, _, c2 = network.forward_pass(X, Y)
+            gradb[i] = (c2 - cost) / h
+            network.layers[idx].b[i] -= h
 
-    for i in range(W.shape[0]):
-        for j in range(W.shape[1]):
-            W_try = np.array(W)
-            W_try[i, j] += h
-            c2 = network.compute_cost(X, Y, W_try, b)
-            gradW[i, j] = (c2 - cost) / h
+        for i in tqdm(range(W.shape[0])):
+            for j in (range(W.shape[1])):
+                network.layers[idx].W[i, j] += h
+                _, _, c2 = network.forward_pass(X, Y)
+                gradW[i, j] = (c2 - cost) / h
+                network.layers[idx].W[i, j] -= h
 
-    return gradW, gradb
+        grad_weights.append(gradW)
+        grad_bias.append(gradb)
+
+    return grad_weights, grad_bias
 
 
 def compute_grads_num_slow(network, X, Y, h):
@@ -215,31 +253,37 @@ def compute_grads_num_slow(network, X, Y, h):
     Compute the gradient using the Central Difference approximation.
     Slightly slower but more accurate than the finite difference approach.
     """
-    W = network.W
-    b = network.b
+    grad_weights = []
+    grad_bias = []
+    for idx, layer in enumerate(network.layers):
+        print('slow num on layer', idx)
+        W = layer.W
+        b = layer.b
 
-    gradW = np.matlib.zeros(W.shape)
-    gradb = np.matlib.zeros(b.shape)
+        gradW = np.matlib.zeros(W.shape)
+        gradb = np.matlib.zeros(b.shape)
 
-    for i in range(len(b)):
-        b -= h
-        c1 = network.compute_cost(X, Y)
-        b_try = np.array(b)
-        b_try[i] += h
-        c2 = network.compute_cost(X, Y, W, b_try)
-        gradb[i] = (c2-c1) / (2*h)
+        for i in range(len(b)):
+            network.layers[idx].b[i] -= h
+            _, _, c1 = network.forward_pass(X, Y)
+            network.layers[idx].b[i] += 2*h
+            _, _, c2 = network.forward_pass(X, Y)
+            gradb[i] = (c2-c1) / (2*h)
+            network.layers[idx].b[i] -= h
 
-    for i in range(W.shape[0]):
-        for j in range(W.shape[1]):
-            W_try = np.array(W)
-            W_try[i, j] -= h
-            c1 = network.compute_cost(X, Y, W_try, b)
-            W_try = np.array(W)
-            W_try[i, j] += h
-            c2 = network.compute_cost(X, Y, W_try, b)
-            gradW[i, j] = (c2-c1) / (2*h)
+        for i in tqdm(range(W.shape[0])):
+            for j in range(W.shape[1]):
+                network.layers[idx].W[i, j] -= h
+                _, _, c1 = network.forward_pass(X, Y)
+                network.layers[idx].W[i, j] -= 2*h
+                _, _, c2 = network.forward_pass(X, Y)
+                gradW[i, j] = (c2-c1) / (2*h)
+                network.layers[idx].W[i, j] += h
 
-    return gradW, gradb
+        grad_weights.append(gradW)
+        grad_bias.append(gradb)
+
+    return grad_weights, grad_bias
 
 
 def check_gradient(batchSize=20, tol=1e-5):
@@ -263,70 +307,27 @@ def check_gradient(batchSize=20, tol=1e-5):
 
     network = Network(dataset.input_dim, dataset.num_labels)
 
-    gradW, gradb = network.compute_gradients(
-        X[:, :batchSize], Y[:, :batchSize])
+    gradW, gradb = compute_gradients(network,
+                                     X[:, :batchSize], Y[:, :batchSize])
 
-    ngradW, ngradb = compute_grads_num(
+    num_gradW, num_gradb = compute_grads_num(
         network, X[:, :batchSize], Y[:, :batchSize], tol)
 
-    slow_gradW, slow_gradb = compute_grads_num_slow(
+    slow_num_gradW, slow_num_gradb = compute_grads_num_slow(
         network, X[:, :batchSize], Y[:, :batchSize], tol)
 
-    rel_error = np.sum(abs(ngradW - gradW)) / np.maximum(tol,
-                                                         np.sum(abs(ngradW)) + np.sum(abs(gradW)))
+    table = []
+    for i, (gradW, ngradW, slow_gradW) in enumerate(zip(gradW, num_gradW, slow_num_gradW)):
+        rel_error = np.sum(abs(ngradW - gradW)) / np.maximum(tol,
+                                                             np.sum(abs(ngradW)) + np.sum(abs(gradW)))
+        rel_error_slow = np.sum(abs(slow_gradW - gradW)) / np.maximum(tol,
+                                                                      np.sum(abs(slow_gradW)) + np.sum(abs(gradW)))
 
-    rel_error_slow = np.sum(abs(slow_gradW - gradW)) / np.maximum(tol,
-                                                                  np.sum(abs(slow_gradW)) + np.sum(abs(gradW)))
+        table.append([i+1, rel_error, rel_error_slow])
 
-    table = [['Analytical', '-', np.mean(gradW), np.min(gradW), np.max(gradW)],
-             ['Finite difference (Numerical)', '{:.5e}'.format(
-                 rel_error), np.mean(ngradW), np.min(ngradW), np.max(ngradW)],
-             ['Central difference (Numerical)', '{:.5e}'.format(rel_error_slow), np.mean(slow_gradW), np.min(slow_gradW), np.max(slow_gradW)]]
-
-    table = tabulate(table, headers=['Gradient', 'Relative Error',
-                                     'Mean Weight', 'Min Weight', 'Max Weight'], tablefmt='github')
+    table = tabulate(table, headers=['Layer #', 'Relative error Analytical vs Numerical',
+                                     'Relative error Analytical vs Slow Numerical'], tablefmt='github')
     print(table)
-
-
-def plot_images(noise=None):
-    dataset = CIFAR()
-    training_data = dataset.get_batch('data_batch_1')
-    labels = dataset.get_labels()
-
-    images = []
-    for idx, label in enumerate(labels):
-        # Get all images of class y == idx
-        images_of_class = training_data['X'][:, (training_data['y'] == idx)]
-        # Store first occurence and use it for plot
-        img = images_of_class[:, 0]
-
-        if noise is not None:
-            img = util.random_noise(img, mode=noise, seed=None, clip=True)
-        images.append(img)
-
-    plot_weights(np.array(images), labels)
-    plt.show()
-
-
-def plot_weights(W, labels, filename=None):
-    """
-    Plots the learnt weights of the network, representing the 'template image' for each class.
-    """
-    fig, axes = plt.subplots(1, 10, figsize=(12.0, 2.0))
-    for w, label, ax in zip(W, labels, axes.ravel()):
-        im = w.reshape(3, 32, 32)
-        im = (im - im.min()) / (im.max() - im.min())
-        im = im.T
-        im = np.rot90(im, k=3)
-        ax.imshow(im)
-        ax.set_title(label)
-        ax.set_xticks(())
-        ax.set_yticks(())
-
-    if filename is not None:
-        plt.savefig('classTemplates_{}.png'.format(filename))
-        plt.clf()
-        plt.close()
 
 
 def plot_performance(cost_train, cost_val, accuracy_train, accuracy_val, filename=None):
@@ -356,52 +357,32 @@ def plot_performance(cost_train, cost_val, accuracy_train, accuracy_val, filenam
         plt.close()
 
 
-def model_summary(dataset, training_data, validation_data, test_data, parameters, save=False):
+def model_summary(dataset, training_data, validation_data, parameters):
     """
     Generates a summary of the network performance based on the given data and parameters.
     """
 
     # Initialize the network
-    network = Network(dataset.input_dim, dataset.num_labels,
-                      l=parameters['l'])
+    network = Network(dataset.input_dim, dataset.num_labels, layer_size=[50])
 
     # Check initial accuracy
     init_acc_train = network.compute_accuracy(
-        training_data['X'], training_data['y'])
+        training_data['X'], training_data['Y'])
     init_acc_val = network.compute_accuracy(
-        validation_data['X'], validation_data['y'])
-    init_acc_test = network.compute_accuracy(
-        test_data['X'], test_data['y'])
+        validation_data['X'], validation_data['Y'])
 
     # Format string to ouput model stats
     model_parameters = 'Model parameters: \n' + \
-        '   loss:   \t{}\n'.format(loss) + \
         '   lambda:  \t{}\n'.format(parameters['l']) + \
         '   eta:  \t{}\n'.format(parameters['eta']) + \
         '   n_epochs: \t{}\n'.format(parameters['n_epochs']) + \
         '   n_batches: \t{}\n'.format(parameters['n_batches'])
 
-    if parameters['decay'] != 1:
-        model_parameters = model_parameters + \
-            '   decay: \t{}\n'.format(parameters['decay'])
-    if parameters['shuffle']:
-        model_parameters = model_parameters + \
-            '   shuffle: \t{}\n'.format(parameters['shuffle'])
-    if parameters['noise'] is not None:
-        model_parameters = model_parameters + \
-            '   noise: \t{}\n'.format(parameters['noise'])
-
     print(model_parameters)
 
     # Train network
     cost_train, cost_val, accuracy_train, accuracy_val = network.train(
-        training_data, validation_data, parameters['eta'], parameters[
-            'n_epochs'], parameters['n_batches'], parameters['shuffle'],
-        parameters['decay'], parameters['noise'])
-
-    # Compute accuracy on test data
-    accuracy_test = network.compute_accuracy(test_data['X'], test_data['y'])
-    cost_test = network.compute_cost(test_data['X'], test_data['Y'])
+        training_data, validation_data, parameters['eta'], parameters['n_epochs'], parameters['n_batches'])
 
     model_performance = 'Training data:\n' + \
                         '   accuracy (untrained): \t{:.2f}%\n'.format(init_acc_train) + \
@@ -410,30 +391,15 @@ def model_summary(dataset, training_data, validation_data, test_data, parameters
                         'Validation data:\n' + \
                         '   accuracy (untrained): \t{:.2f}%\n'.format(init_acc_val) + \
                         '   accuracy (trained): \t\t{:.2f}%\n'.format(accuracy_val[-1]) + \
-                        '   cost (final): \t\t{:.2f}\n'.format(cost_val[-1]) + \
-                        'Test data:\n' + \
-                        '   accuracy (untrained): \t{:.2f}%\n'.format(init_acc_test) + \
-                        '   accuracy (trained): \t\t{:.2f}%\n'.format(accuracy_test) + \
-                        '   cost (final): \t\t{:.2f}\n'.format(cost_test)
+                        '   cost (final): \t\t{:.2f}\n'.format(cost_val[-1])
 
     print(model_performance)
 
-    if save:
-        filename = str(parameters['l'])+"_eta"+str(parameters['eta'])
-        with open('summary_{}.txt'.format(filename), 'w') as f:
-            f.write(model_parameters + model_performance)
-    else:
-        filename = None
-
-    plot_performance(cost_train, cost_val, accuracy_train,
-                     accuracy_val, filename=filename)
-    plot_weights(network.W, dataset.get_labels(), filename=filename)
+    plot_performance(cost_train, cost_val, accuracy_train, accuracy_val)
     plt.show()
 
-# -------------------------------------------------------------------------#
 
-
-def report(l=0.0, eta=0.001, n_epochs=40, n_batches=100, noise=None, save=False):
+def report(l=0.0, eta=0.01, n_epochs=40, n_batches=100):
     """
     Method that loads and preprocesses the data and then trains the model for the given parameters in order to generate
     a summary of the model performance.
@@ -442,24 +408,21 @@ def report(l=0.0, eta=0.001, n_epochs=40, n_batches=100, noise=None, save=False)
     dataset = CIFAR()
     training_data = dataset.get_batch('data_batch_1')
     validation_data = dataset.get_batch('data_batch_2')
-    test_data = dataset.get_batch('test_batch')
 
     mean = np.mean(training_data['X'], axis=1)
     std = np.std(training_data['X'], axis=1)
 
     training_data['X'] = dataset.normalize(training_data['X'], mean, std)
     validation_data['X'] = dataset.normalize(validation_data['X'], mean, std)
-    test_data['X'] = dataset.normalize(test_data['X'], mean, std)
 
-    parameters = {'l': l,  'eta': eta,   'n_epochs': n_epochs,
-             'n_batches': n_batches,    'noise': noise}
+    parameters = {'l': l,  'eta': eta,
+                  'n_epochs': n_epochs, 'n_batches': n_batches}
 
-    model_summary(dataset, training_data, validation_data,
-                  test_data, parameters, save=save)
+    model_summary(dataset, training_data, validation_data, parameters)
 
-
-""" Example use """
-# plot_images()
+# TODO: Rework the numerical gradient computations
 # check_gradient()
-# plot_images('gaussian')
-# report(loss='cross', l=0.1, eta=0.035, n_epochs=100, n_batches=500, shuffle=False, decay=0.94)
+
+
+report()
+ 
