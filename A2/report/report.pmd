@@ -1,0 +1,133 @@
+# DD2424 Deep Learning in Data Science - Assignment 2
+
+```python, term=True, echo=False
+%matplotlib inline
+import os
+import sys
+sys.path.append(os.getcwd() + '/..')
+from assignment2 import *
+```
+
+## Introduction
+The goal of this assignment is to train and evaluate the performance of a *multi layer neural network* in order to
+classify images from the [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html) dataset.
+
+
+## Computing the gradient
+
+Before continuing we first have to verify that the gradients computed are sufficiently accurate. A comparsion will therefore be made between
+the analytically computed gradients and the corresponding gradients computed numerically, for each layer in the network.
+Because it is computationally expensive to compute the cost for all entries in the weight matrices using the numerical methods we'll reduce the number of images and their dimensionality when computing the gradients for this comparison.
+The dimensionality of the images are brought down from 3072 to 1000. We're also only using 20 samples and the tolerance is set to 1e-5.
+
+The relative error between the analytical gradient and the gradients computed with the *Finite* and *Central-*difference methods are shown in the table below,
+
+```python, term=True, echo=False, result='tex', wrap=False
+check_gradient(dimensions=100, batchSize=20)
+```
+
+From the table above, it is clear that the analytical gradient is sufficiently close to the numerical ones. 
+A quick sanity check is also done by training the model for 200 epochs with no regularization and a learning rate set to 0.01.
+From this we expect the model to become very overfitted to the training data and therefore have a very low loss. The results are shown
+in the figure below
+
+![](report/sanityCheck_overfitting.png)
+
+Now we can be quite confident that the analytical gradient is sufficiently accurate since we're able to achieve a very overfitted model with a low loss 
+and we've also verified that the differences between the analytical and numerical gradients are low. As such we'll proceed.
+
+## Train the network on a batch of data
+
+The network was then trained using the given parameter values.
+
+```python, term=True, echo=False,
+report(l=0.01, cycles=1, n_s=500)
+```
+
+Now we'll train for 3 cycles.
+```python, term=True, echo=False,
+report(l=0.01, cycles=3, n_s=800)
+```
+
+### Coarse search for *good* regularization parameter values
+
+State the range of the values you searched for lambda, the num-
+ber of cycles used for training during the **coarse search** and the
+hyper-parameter settings for the 3 best performing networks you
+trained.
+
+```python, term=True, echo=False,
+coarse_search(verbose=True)
+```
+
+From the table above we then identify the value of lambda that gave the best accuracy on the test data.
+Then, we choose a smaller range and perform a finer search to see if we can do better.
+
+
+### Fine search for *good* values for the regularization parameter
+
+State the range of the values you searched for lambda, the num-
+ber of cycles used for training during the **fine search**, and the
+hyper-parameter settings for the 3 best performing networks you
+trained.
+
+```python, term=True, echo=False,
+fine_search(lower_limit=0.005, upper_limit=0.05, verbose=True)
+```
+
+### Train the network on all training data
+
+Now that we've found a good value for the regularization parameter we'll train the network
+on all the training data (batches 1-5) except for 1000 examples which will be reserved as a validation set.
+The training is then done for 3 cycles.
+
+```python, term=True, echo=False,
+report(l=0.001, cycles=3, n_s=800, num_training_batches=5)
+```
+
+
+## Optimize the performance of the network
+Now we make some changes to see if we can increase the performance of the network. There are many possible options
+to consider but I will mainly focus on
+
+* Do a more exhaustive random search for *good* values for the amount of regularization
+* Investigate if more hidden nodes improves the accuracy on the test data
+* Add noise to the training samples
+
+
+### Exhaustive search
+
+
+### Adding more nodes to the hidden layer
+
+We'll first increase the number of nodes from 50 to 100 in the hidden layer.
+```python, term=True, echo=False,
+report(l=0.001, cycles=3, n_s=800, num_nodes=100, num_training_batches=5)
+```
+
+```python, term=True, echo=False,
+report(l=0.001, cycles=3, n_s=800, num_nodes=500, num_training_batches=5)
+```
+
+Since I've also implemented support for more than two layers I'll include a run with three hidden layers.
+
+```python, term=True, echo=False,
+report(l=0.001, cycles=3, n_s=800, num_nodes=(100, 50, 25), num_training_batches=5)
+```
+
+### Add noise to training data
+By adding noise to the data will make it more difficult for the network to make a precise fit
+to the training data and will therefore reduce the risk of overfitting the model.
+
+Add gaussian noise with mean 0 and standard deviation 0.01.
+```python, term=True, echo=False,
+report(l=0.001, cycles=3, n_s=800, num_training_batches=5, noise='gaussian')
+```
+
+Add salt&pepper noise
+```python, term=True, echo=False,
+report(l=0.001, cycles=3, n_s=800, num_training_batches=5, noise='s&p')
+```
+
+
+## Find *good* values for ```eta_min``` and ```eta_max```
