@@ -49,27 +49,23 @@ Now we'll train for 3 cycles.
 report(l=0.01, cycles=3, n_s=800)
 ```
 
-### Coarse search for *good* regularization parameter values
+The cyclical pattern is clearly visible in the accuracy and loss/cost plots and overlaps with the cyclical learning rate.
+It seems to work well because oscillations in the learning rate allows us to periodically take larger "steps" which may allow us
+to escape from a local minima. As such, the neural network doesn't run the same risk of getting stuck at a local minima of the cost function
+during the gradient descent.
 
-State the range of the values you searched for lambda, the num-
-ber of cycles used for training during the **coarse search** and the
-hyper-parameter settings for the 3 best performing networks you
-trained.
+### Coarse search for *good* regularization parameter values
 
 ```python, term=True, echo=False,
 coarse_search(verbose=True)
 ```
+
 
 From the table above we then identify the value of lambda that gave the best accuracy on the test data.
 Then, we choose a smaller range and perform a finer search to see if we can do better.
 
 
 ### Fine search for *good* values for the regularization parameter
-
-State the range of the values you searched for lambda, the num-
-ber of cycles used for training during the **fine search**, and the
-hyper-parameter settings for the 3 best performing networks you
-trained.
 
 ```python, term=True, echo=False,
 fine_search(lower_limit=0.005, upper_limit=0.05, verbose=True)
@@ -90,12 +86,20 @@ report(l=0.001, cycles=3, n_s=800, num_training_batches=5)
 Now we make some changes to see if we can increase the performance of the network. There are many possible options
 to consider but I will mainly focus on
 
-* Do a more exhaustive random search for *good* values for the amount of regularization
+* Implement dropout
 * Investigate if more hidden nodes improves the accuracy on the test data
 * Add noise to the training samples
 
 
-### Exhaustive search
+### Dropout
+During training we'll "kill" neurons with a probability p for each hidden layer. By "killing" a neuron we'll
+set its output to zero, effectively killing the signal from that neuron, preventing it from propagating further in the network.
+This is a strategy used for regularization of neural networks.
+
+Running dropout using ``p=0.5`` on a neural network with 50 nodes in the hidden layer we obtain the following results.
+```python, term=True, echo=False,
+report(l=0.001, cycles=3, n_s=800, num_nodes=50, dropout=0.5, num_training_batches=5)
+```
 
 
 ### Adding more nodes to the hidden layer
@@ -129,5 +133,16 @@ Add salt&pepper noise
 report(l=0.001, cycles=3, n_s=800, num_training_batches=5, noise='s&p')
 ```
 
-
 ## Find *good* values for ```eta_min``` and ```eta_max```
+
+In order to find some decent values for our maximum and minimum learnin rate we'll perform a "Learning rate range test".
+The idea is to let the model run for half a cycle, allowing the learning rate to linearly increase from the minimum to the maximum value.
+By recording the accuracies achieved for different learning rates and then plotting these against each other. We then look at where
+the accuracy first starts to increase and where it starts to level out, becomes jagged or even declines. These two points are typically considered
+to be good upper and lower bounds for the learning rate.
+
+For our particular case we obtain
+```python, term=True, echo=False,
+search_lr(1e-5, 0.1)
+```
+Juding by this plot it seems to be reasonable to set ```eta_min = 1e-5``` and ```eta_max = 0.07```

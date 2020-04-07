@@ -66,7 +66,7 @@ class Network():
 
         return layers
 
-    def forward_pass(self, X, Y):
+    def forward_pass(self, X, Y, dropout=None):
         """
         Calculates and returns the probability, the intermediary activation values as well as the cost
         and loss of the multi-layer neural network.
@@ -77,6 +77,11 @@ class Network():
         for layer in self.layers:
             s = np.dot(layer.W, input_values) + layer.b
             input_values = np.maximum(0, s)
+
+            if dropout is not None:
+                p = np.random.binomial(1, (1-dropout), size=input_values.shape[1])
+                input_values *= p
+
             activations.append(input_values)
             cost += self.l * np.sum(np.power(layer.W, 2))
 
@@ -121,19 +126,19 @@ class Network():
 
         return 100*np.sum(P == y)/y.shape[0], cost, loss
 
-    def train(self, training_data, validation_data, n_batches, cycles=2, n_s=500, eta_min=1e-5, eta_max=1e-1, sampling_rate=100, noise=None):
+    def train(self, training_data, validation_data, n_batches, cycles=2, n_s=500, eta_min=1e-5, eta_max=1e-1, sampling_rate=100, dropout=None, noise=None):
         """
         Train the network by calculating the weights and bias that minimizes the cost function
         using the Mini-Batch Gradient Descent approach.
         """
 
-        n_epochs = int(cycles * 2 * n_s/sampling_rate) + 1
+        num_results = int(cycles * 2 * n_s/sampling_rate) + 1
 
         X, Y, y = training_data['X'], training_data['Y'], training_data['y']
         Xval, Yval, yval = validation_data['X'], validation_data['Y'], validation_data['y']
 
         train_results, val_results = np.zeros(
-            (n_epochs, 4)), np.zeros((n_epochs, 4))
+            (num_results, 5)), np.zeros((num_results, 5))
 
         # Store step number, accuracy, cost and loss columnwise, each row corresponds to an epoch
         train_results[0, 0] = 0
@@ -144,7 +149,7 @@ class Network():
         val_results[0, 1], val_results[0, 2], val_results[0,
                                                           3] = self.compute_performance(Xval, Yval)
 
-        for t in tqdm(range(1, cycles*2*n_s+1), desc='Training model', disable=False):
+        for t in tqdm(range(1, cycles*2*n_s+1), desc='Training model', disable=True):
             j = (t % int(X.shape[1]/n_batches)) + 1
             jstart = (j-1) * n_batches + 1
             jend = j * n_batches
@@ -163,7 +168,8 @@ class Network():
             else:
                 eta = eta_max - (t - (2*l+1)*n_s)/n_s * (eta_max - eta_min)
 
-            P, activations, _, _ = self.forward_pass(Xbatch, Ybatch)
+            P, activations, _, _ = self.forward_pass(Xbatch, Ybatch, dropout)
+
 
             gradsW, gradsb = self.backward_pass(Xbatch, Ybatch, P, activations)
 
@@ -177,10 +183,12 @@ class Network():
                 train_results[i, 0] = t
                 train_results[i, 1], train_results[i,
                                                    2], train_results[i, 3] = self.compute_performance(X, Y)
+                train_results[i, 4] = eta
 
                 val_results[i, 0] = t
                 val_results[i, 1], val_results[i, 2], val_results[i,
                                                                   3] = self.compute_performance(Xval, Yval)
+                val_results[i, 4] = eta
 
         return train_results, val_results
 
@@ -444,7 +452,7 @@ def coarse_search(lmin=-1, lmax=-5, num_parameters=8, verbose=False, save=True):
     table = []
     # Train a model for each regularization parameter and store the results
     for l in lambdas:
-        output = report(l=l, verbose=verbose, parameter_search=True)
+        output, _, _ = report(l=l, verbose=verbose, parameter_search=True)
         table.append(output)
 
     table = tabulate(table, headers=['lambda', 'cycles', 'n_s', 'n_batches', 'eta_min', 'eta_max', 'accuracy (train)',
@@ -467,7 +475,7 @@ def fine_search(lower_limit, upper_limit, num_parameters=10, verbose=False, save
     table = []
     # Train a model for each regularization parameter and store the results
     for l in lambdas:
-        output = report(l=l, verbose=verbose, parameter_search=True)
+        output, _, _ = report(l=l, verbose=verbose, parameter_search=True)
         table.append(output)
 
     table = tabulate(table, headers=['lambda', 'cycles', 'n_s', 'n_batches', 'eta_min', 'eta_max', 'accuracy (train)',
@@ -477,6 +485,23 @@ def fine_search(lower_limit, upper_limit, num_parameters=10, verbose=False, save
     if save:
         with open('fine.md', 'w') as f:
             f.write(table)
+
+
+def search_lr(lower_limit, upper_limit, verbose=False):
+    """
+    Used to search for a good learning rate by plotting the accuracy vs the learning rate for the specified range.
+    """
+    # Generate regularization parameters using the bounds
+
+    # Train a model for each regularization parameter and store the results
+    _, train_results, val_results = report(cycles=1, eta_min=lower_limit, eta_max=upper_limit, num_training_batches=5, verbose=verbose, sampling_rate=50, parameter_search=True)
+    n = int(len(val_results)/2)
+
+    plt.plot(val_results[1:n,4], val_results[1:n, 1])
+    plt.xlabel('Learning rate')
+    plt.ylabel('Accuracy %')
+    plt.show()
+
 
 
 def plot_performance(train_results, val_results, filename=None):
@@ -514,7 +539,7 @@ def plot_performance(train_results, val_results, filename=None):
         plt.close()
 
 
-def model_summary(dataset, training_data, validation_data, test_data, parameters, num_nodes=50, verbose=True, parameter_search=False):
+def model_summary(dataset, training_data, validation_data, test_data, parameters, num_nodes=50, verbose=True, sampling_rate=100, parameter_search=False):
     """
     Generates a summary of the network performance based on the given data and parameters.
     """
@@ -533,6 +558,10 @@ def model_summary(dataset, training_data, validation_data, test_data, parameters
         '   eta_min: \t{}\n'.format(parameters['eta_min']) + \
         '   eta_max: \t{}\n'.format(parameters['eta_max'])
 
+    if parameters['dropout'] is not None:
+        model_parameters = model_parameters + \
+        '   dropout: \t{}\n'.format(parameters['dropout'])
+
     if parameters['noise'] is not None:
         model_parameters = model_parameters + \
             '   noise: \t{}\n'.format(parameters['noise'])
@@ -546,7 +575,7 @@ def model_summary(dataset, training_data, validation_data, test_data, parameters
     # Train network
     train_results, val_results = network.train(training_data, validation_data, n_batches=parameters['n_batches'],
                                  cycles=parameters['cycles'], n_s=parameters['n_s'], eta_min=parameters['eta_min'],
-                                 eta_max=parameters['eta_max'], noise=parameters['noise'])
+                                 eta_max=parameters['eta_max'], sampling_rate=sampling_rate, dropout=parameters['dropout'], noise=parameters['noise'])
 
     test_accuracy_final, test_cost, _ = network.compute_performance(
         test_data['X'], test_data['Y'])
@@ -570,14 +599,13 @@ def model_summary(dataset, training_data, validation_data, test_data, parameters
     if parameter_search:
         result = ['{:.6f}'.format(parameters['l']), parameters['cycles'], parameters['n_s'], parameters['n_batches'], parameters['eta_min'],
                   parameters['eta_max'], '{:.2f}%'.format(train_results[-1, 1]), '{:.2f}%'.format(val_results[-1, 1]), '{:.2f}%'.format(test_accuracy_final)]
-        return result
+        return result, train_results, val_results
 
     else:
         plot_performance(train_results, val_results)
         plt.show()
 
-
-def report(l=0.01, cycles=2, n_s=500, eta_min=1e-5, eta_max=1e-1, n_batches=100, num_nodes=50, num_training_batches=1, parameter_search=False, noise=None, verbose=True):
+def report(l=0.01, cycles=2, n_s=500, eta_min=1e-5, eta_max=1e-1, n_batches=100, num_nodes=50, num_training_batches=1, sampling_rate=100, parameter_search=False, dropout=None, noise=None, verbose=True):
     """
     Method that loads and preprocesses the data and then trains the model for the given parameters in order to generate
     a summary of the model performance which will be used for the report.
@@ -599,9 +627,8 @@ def report(l=0.01, cycles=2, n_s=500, eta_min=1e-5, eta_max=1e-1, n_batches=100,
         n_s = 2 * int(training_data['X'].shape[1] / n_batches)
 
     parameters = {'l': l, 'n_batches': n_batches, 'cycles': cycles,
-                  'n_s': n_s, 'eta_min': eta_min, 'eta_max': eta_max, 'noise': noise}
+                  'n_s': n_s, 'eta_min': eta_min, 'eta_max': eta_max, 'dropout': dropout, 'noise': noise}
 
     summary = model_summary(dataset, training_data, validation_data,
-                            test_data, parameters, num_nodes=num_nodes, verbose=verbose, parameter_search=parameter_search)
+                            test_data, parameters, num_nodes=num_nodes, verbose=verbose, sampling_rate=sampling_rate, parameter_search=parameter_search)
     return summary
-
