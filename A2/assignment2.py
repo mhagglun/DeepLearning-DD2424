@@ -440,50 +440,28 @@ def check_gradient(dimensions=100, batchSize=20, tol=1e-5):
     print(table)
 
 
-def coarse_search(lmin=-1, lmax=-5, num_parameters=8, verbose=False, save=True):
+def parameter_search(lmin=-1, lmax=-5, num_parameters=8, filename=None):
     """
     Performs a coarse search over a broad range of values of the regularization parameter
     to find a good value.
     """
     # Generate regularization parameters uniformly, from 10^lmin to 10^lmax
+    np.random.seed(400)
     lambdas = lmin + (lmax - lmin)*np.random.uniform(size=num_parameters)
     lambdas = np.power(10, lambdas)
 
     table = []
     # Train a model for each regularization parameter and store the results
     for l in lambdas:
-        output, _, _ = report(l=l, verbose=verbose, parameter_search=True)
+        output, _, _ = report(l=l, num_training_batches=5, parameter_search=True)
         table.append(output)
 
     table = tabulate(table, headers=['lambda', 'cycles', 'n_s', 'n_batches', 'eta_min', 'eta_max', 'accuracy (train)',
                                      'accuracy (val)', 'accuracy (test)'], tablefmt='github')
 
     print(table)
-    if save:
-        with open('coarse.md', 'w') as f:
-            f.write(table)
-
-
-def fine_search(lower_limit, upper_limit, num_parameters=10, verbose=False, save=True):
-    """
-    Performs a fine search over a small range of values of the regularization parameter
-    to find a good value.
-    """
-    # Generate regularization parameters using the bounds
-    lambdas = np.linspace(lower_limit, upper_limit, num_parameters)
-
-    table = []
-    # Train a model for each regularization parameter and store the results
-    for l in lambdas:
-        output, _, _ = report(l=l, verbose=verbose, parameter_search=True)
-        table.append(output)
-
-    table = tabulate(table, headers=['lambda', 'cycles', 'n_s', 'n_batches', 'eta_min', 'eta_max', 'accuracy (train)',
-                                     'accuracy (val)', 'accuracy (test)'], tablefmt='github')
-
-    print(table)
-    if save:
-        with open('fine.md', 'w') as f:
+    if filename is not None:
+        with open('{}.md'.format(filename), 'w') as f:
             f.write(table)
 
 
@@ -491,9 +469,6 @@ def search_lr(lower_limit, upper_limit, verbose=False):
     """
     Used to search for a good learning rate by plotting the accuracy vs the learning rate for the specified range.
     """
-    # Generate regularization parameters using the bounds
-
-    # Train a model for each regularization parameter and store the results
     _, train_results, val_results = report(cycles=1, eta_min=lower_limit, eta_max=upper_limit, num_training_batches=5, verbose=verbose, sampling_rate=50, parameter_search=True)
     n = int(len(val_results)/2)
 
