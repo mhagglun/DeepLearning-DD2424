@@ -1,0 +1,80 @@
+# DD2424 Deep Learning in Data Science - Assignment 3
+
+```python, term=True, echo=False
+%matplotlib inline
+import os
+import sys
+sys.path.append(os.getcwd() + '/..')
+from assignment3 import *
+```
+
+## Introduction
+The goal of this assignment is to train and evaluate the performance of a *multi layer neural network* in order to
+classify images from the [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html) dataset.
+
+
+## Computing the gradient
+
+Before continuing we first have to verify that the gradients computed are sufficiently accurate. A comparsion is therefore made between
+the analytically computed gradients and the corresponding gradients computed numerically, for each layer in the network.
+Because it is computationally expensive to compute the cost for all entries in the weight matrices using the numerical methods we'll reduce the number of images and their dimensionality when computing the gradients for this comparison.
+The dimensionality of the images are brought down from 3072 to 10. We're also only using 20 samples and setting the tolerance to 1e-5.
+
+The relative error between the analytical gradient and the gradients computed with the *Finite* and *Central-*difference methods are shown in the table below.
+
+## Train the network 
+The network is now trained on on all the training data batches (1-5) except for 1000 samples which will be reserved as a validation set.
+The training is then done for 2 cycles using ``n_s = 5 * 45000 / n_batch``, He initialization of the weights and shuffling of the training data.
+
+```python, term=True, echo=False,
+report(num_nodes=(50,50), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, n_batches=100,
+         num_training_batches=5, shuffle=True, initialization='he')
+```
+
+## Implement BatchNormalization
+
+
+
+## Optimize the performance of the network
+Now we make some changes to see if we can increase the performance of the network. There are many possible options
+to consider but I will mainly focus on
+
+* Perform a thorough search for good parameter values
+* Use dropout
+* Investigate if more hidden layers improves the accuracy on the test data
+* Add noise to the training samples
+
+
+### Parameter search
+
+### Dropout
+During training we'll kill the activations of neurons with a probability p for each hidden layer. By "killing" a neuron we'll
+set its output to zero, effectively killing the signal from that neuron, preventing it from propagating further in the network.
+This is a strategy used for regularization of neural networks.
+
+Running dropout using ``p=0.5`` on a neural network with 50 nodes in the hidden layer we obtain the following results.
+```python, term=True, echo=False,
+report(l=0.005, cycles=2, num_nodes=(50,50), dropout=0.5, num_training_batches=5)
+```
+
+
+### Adding more hidden layers
+
+
+```python, term=True, echo=False,
+report(l=0.005, cycles=2, n_s=800, num_nodes=(100, 100, 100), num_training_batches=5)
+```
+
+### Add noise to training data
+By adding noise to the data will make it more difficult for the network to make a precise fit
+to the training data and will therefore reduce the risk of overfitting the model.
+
+Add gaussian noise with mean 0 and standard deviation 0.01.
+```python, term=True, echo=False,
+report(l=0.005, cycles=2, num_training_batches=5, noise='gaussian')
+```
+
+Add salt&pepper noise
+```python, term=True, echo=False,
+report(l=0.005, cycles=3, num_training_batches=5, noise='s&p')
+```
