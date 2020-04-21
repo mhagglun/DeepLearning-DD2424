@@ -53,6 +53,7 @@ class Network():
             self.beta = np.zeros((output_dim,1))
             self.mu_av = np.zeros((output_dim,1))
             self.var_av = np.zeros((output_dim,1))
+
             if initialization=='xavier':
                 bound = np.sqrt(6) / (input_dim + output_dim)
                 self.W = np.random.uniform(-bound, bound, size=(output_dim, input_dim) )
@@ -60,6 +61,10 @@ class Network():
             elif initialization=='he':
                 self.W = np.random.normal(
                 0, np.sqrt(2 / (input_dim+output_dim)), size=(output_dim, input_dim) )
+                self.b = np.zeros((output_dim, 1))
+            elif isinstance(initialization, (float, int)):
+                self.W = np.random.normal(
+                0, initialization, size=(output_dim, input_dim) )
                 self.b = np.zeros((output_dim, 1))
             else:
                 self.W = np.random.normal(
@@ -88,6 +93,7 @@ class Network():
         Calculates and returns the probability, the intermediary activation values as well as the cost
         and loss of the multi-layer neural network.
         """
+        N = X.shape[1]
         input_values = X
         activations = [input_values]
         cost = 0
@@ -103,10 +109,12 @@ class Network():
             s = np.dot(layer.W, input_values) + layer.b
             
             if self.BN and i < len(self.layers)-1:
+                
                 if training:
                     mean = np.mean(s, axis=1, keepdims=True)
-                    variance = np.std(s, axis=1, keepdims=True) + np.finfo(np.float64).eps
-                    if (self.layers[i].mu_av == np.ones(mean.shape)).all():                 # Check if it has been initiated
+                    variance = np.var(s, axis=1, keepdims=True) + np.finfo(np.float64).eps
+                    
+                    if (self.layers[i].mu_av == np.ones(mean.shape)).all():         # Check if it has been initiated
                         self.layers[i].mu_av = mean
                         self.layers[i].var_av = variance
                     else:
@@ -115,16 +123,15 @@ class Network():
                 else:
                     mean = layer.mu_av
                     variance = layer.var_av
-
-                var = np.diagflat(np.power(variance, -0.5))                
-                s_normalized = var.dot((s - mean))
+                
+                s_normalized = (s - mean) / np.sqrt(variance)
 
                 BatchNorm['mean'].append(mean)
                 BatchNorm['variance'].append(variance)
                 BatchNorm['scores'].append(s)
                 BatchNorm['scores_normalized'].append(s_normalized) 
 
-                s = np.multiply(layer.gamma, s_normalized) + layer.beta 
+                s = np.multiply(s_normalized, layer.gamma) + layer.beta 
                 
             input_values = np.maximum(0, s)
 
@@ -143,28 +150,6 @@ class Network():
 
         return P, activations, cost, loss, BatchNorm
 
-    # def backward_pass(self, X, Y, P, activations):
-    #     """
-    #     Backward propagation to calculate and return the gradients of each layer
-    #     in the neural network.
-    #     """
-    #     N = X.shape[1]
-    #     G = -(Y - P)
-
-    #     grads_W, grads_b = [], []
-    #     for i, layer in reversed(list(enumerate(self.layers))):
-    #         gradb = G.sum(axis=1, keepdims=True) / N
-    #         gradW = np.dot(G, activations[i].T) / N + 2 * self.l * layer.W
-
-    #         grads_W.append(gradW)
-    #         grads_b.append(gradb)
-
-    #         # Propagate the gradient backwards
-    #         G = np.dot(layer.W.T, G)
-    #         G[activations[i] == 0] = 0
-
-    #     return grads_W[::-1], grads_b[::-1]
-
 
     def backward_pass(self, X, Y, P, activations, BatchNorm=None):
         """
@@ -174,8 +159,8 @@ class Network():
         N = X.shape[1]
         G = -(Y - P)
 
-        grads_W, grads_b = [], []
-        grads_gamma, grads_beta = [], []
+        grads_W, grads_b, grads_gamma, grads_beta = [], [], [], []
+
         for i, layer in reversed(list(enumerate(self.layers))):
 
             if i < len(self.layers)-1 and self.BN:
@@ -236,7 +221,7 @@ class Network():
         return 100*np.sum(P == y)/y.shape[0], cost, loss
 
     def train(self, training_data, validation_data, n_batches, cycles=2, n_s=500, eta_min=1e-5, eta_max=1e-1,
-                 sampling_rate=100, shuffle=False, noise=None):
+                 sampling_rate=500, shuffle=False, noise=None):
         """
         Train the network by calculating the weights and bias that minimizes the cost function
         using the Mini-Batch Gradient Descent approach.
@@ -253,13 +238,13 @@ class Network():
         # Store step number, accuracy, cost and loss columnwise, each row corresponds to an epoch
         train_results[0, 0] = 0
         train_results[0, 1], train_results[0,
-                                           2], train_results[0, 3] = self.compute_performance(X, Y)
+                                           2], train_results[0, 3] = self.compute_performance(X, Y, training=True)
 
         val_results[0, 0] = 0
         val_results[0, 1], val_results[0, 2], val_results[0,
-                                                          3] = self.compute_performance(Xval, Yval)
+                                                          3] = self.compute_performance(Xval, Yval, training=True)
 
-        for t in tqdm(range(1, cycles*2*n_s+1), desc='Training model', disable=False):
+        for t in tqdm(range(1, cycles*2*n_s+1), desc='Training model', disable=True):
             j = (t % int(X.shape[1]/n_batches)) + 1
             jstart = (j-1) * n_batches + 1
             jend = j * n_batches
@@ -289,8 +274,9 @@ class Network():
                 for i, (gradW, gradb, gradGamma, gradBeta) in enumerate(zip(gradsW, gradsb, gradsGamma, gradsBeta)):
                     self.layers[i].W -= eta * gradW
                     self.layers[i].b -= eta * gradb
-                    self.layers[i].gamma += gradGamma
-                    self.layers[i].beta += gradBeta
+                    if i > 0 and i < len(self.layers)-1:            # only update for intermediary layers
+                        self.layers[i].gamma -= eta * gradGamma
+                        self.layers[i].beta -= eta * gradBeta
                     
             else:
                 gradsW, gradsb, _, _ = self.backward_pass(Xbatch, Ybatch, P, activations)
@@ -390,7 +376,7 @@ class CIFAR:
 
         return new_batch
 
-    def load_datasets(self, num_training_batches=1, num_validation_samples=1000):
+    def load_datasets(self, num_training_batches=1, num_validation_samples=5000):
         """
         Method used to load and return the training, validation and test data sets.
         The user may specify the number of batches to use for the training set.
@@ -434,8 +420,8 @@ def compute_gradients(network, X, Y):
     N = X.shape[1]
     G = -(Y - P)
 
-    grads_W, grads_b = [], []
-    grads_gamma, grads_beta = [], []
+    grads_W, grads_b, grads_gamma, grads_beta = [], [], [], []
+
     for i, layer in reversed(list(enumerate(network.layers))):
 
         if i < len(network.layers)-1 and network.BN:
@@ -451,16 +437,15 @@ def compute_gradients(network, X, Y):
             grads_beta.append(gradBeta)
 
             # Propagate gradient through scale and shift
-            G = np.multiply(G, layer.gamma)
+            G = np.multiply(G, layer.gamma) 
             G = network.batchnorm_backpass(G, score, mean, variance)
-
 
         gradb = G.sum(axis=1, keepdims=True) / N
         gradW = np.dot(G, activations[i].T) / N + 2 * network.l * layer.W
 
         grads_W.append(gradW)
         grads_b.append(gradb)
-
+    
         # Propagate the gradient backwards
         G = np.dot(layer.W.T, G)
         G[activations[i] == 0] = 0
@@ -471,7 +456,6 @@ def compute_gradients(network, X, Y):
 def compute_grads_num(network, X, Y, h):
     """
     Compute the gradient using the Central Difference approximation.
-    Slightly slower but more accurate than the finite difference approach.
     """
     grad_weights, grad_bias = [], []
     grad_gamma, grad_beta = [], []
@@ -577,19 +561,18 @@ def check_gradient(hidden_layers=(50,50), useBN=True, dimensions=10, batchSize=2
     print(table)
 
 
-def parameter_search(lmin=-1, lmax=-5, num_parameters=8, filename=None):
+def parameter_search(hidden_layers, lmin=-1, lmax=-5, num_parameters=5, filename=None):
     """
     Performs a coarse search over a broad range of values of the regularization parameter
     to find a good value.
     """
-    # Generate regularization parameters uniformly, from 10^lmin to 10^lmax
+    # Generate regularization parameters from 10^lmin to 10^lmax    
     np.random.seed(400)
-    lambdas = lmin + (lmax - lmin)*np.random.uniform(size=num_parameters)
-    lambdas = np.power(10, lambdas)
+    lambdas = np.power(10, np.linspace(lmin, lmax, num_parameters))
 
     table = []
     for l in lambdas:
-        output, _, _ = report(l=l, num_training_batches=5, parameter_search=True)
+        output, _, _ = report(hidden_layers=hidden_layers, l=l, num_training_batches=5, parameter_search=True)
         table.append(output)
 
     table = tabulate(table, headers=['lambda', 'cycles', 'n_s', 'n_batches', 'eta_min', 'eta_max', 'accuracy (train)',
@@ -601,11 +584,11 @@ def parameter_search(lmin=-1, lmax=-5, num_parameters=8, filename=None):
             f.write(table)
 
 
-def search_lr(lower_limit, upper_limit, verbose=False):
+def search_lr(hidden_layers, lower_limit, upper_limit, verbose=False):
     """
     Used to search for a good learning rate by plotting the accuracy vs the learning rate for the specified range.
     """
-    _, train_results, val_results = report(cycles=1, eta_min=lower_limit, eta_max=upper_limit, num_training_batches=5, verbose=verbose, sampling_rate=50, parameter_search=True)
+    _, train_results, val_results = report(hidden_layers=hidden_layers, cycles=1, eta_min=lower_limit, eta_max=upper_limit, num_training_batches=5, verbose=verbose, sampling_rate=50, parameter_search=True)
     n = int(len(val_results)/2)
 
     plt.plot(val_results[1:n,4], val_results[1:n, 1])
@@ -650,18 +633,18 @@ def plot_performance(train_results, val_results, filename=None):
         plt.close()
 
 
-def model_summary(dataset, training_data, validation_data, test_data, parameters, num_nodes=50, verbose=True, sampling_rate=100, parameter_search=False):
+def model_summary(dataset, training_data, validation_data, test_data, parameters, hidden_layers=50, verbose=True, sampling_rate=100, parameter_search=False):
     """
     Generates a summary of the network performance based on the given data and parameters.
     """
 
     # Initialize the network
     network = Network(dataset.input_dim, dataset.num_labels,
-                      hidden_layers=num_nodes, useBN=parameters['useBN'], alpha=parameters['alpha'], initialization=parameters['initialization'], dropout=parameters['dropout'], l=parameters['l'])
+                      hidden_layers=hidden_layers, useBN=parameters['useBN'], alpha=parameters['alpha'], initialization=parameters['initialization'], dropout=parameters['dropout'], l=parameters['l'])
 
     # Format string to ouput model stats
     model_parameters = 'Model parameters: \n' + \
-        '   hidden layers:  \t{}\n'.format(num_nodes) + \
+        '   hidden layers:  \t{}\n'.format(hidden_layers) + \
         '   BN:  \t\t{}\n'.format(parameters['useBN']) + \
         '   lambda:  \t\t{}\n'.format(parameters['l']) + \
         '   cycles: \t\t{}\n'.format(parameters['cycles']) + \
@@ -690,7 +673,7 @@ def model_summary(dataset, training_data, validation_data, test_data, parameters
         print(model_parameters)
 
     test_accuracy_initial, _, _ = network.compute_performance(
-        test_data['X'], test_data['Y'], True)
+        test_data['X'], test_data['Y'], training=True)
 
     # Train network
     train_results, val_results = network.train(training_data, validation_data, n_batches=parameters['n_batches'],
@@ -725,7 +708,7 @@ def model_summary(dataset, training_data, validation_data, test_data, parameters
         plot_performance(train_results, val_results)
         plt.show()
 
-def report(num_nodes=50, l=0.01, cycles=2, n_s=500, eta_min=1e-5, eta_max=1e-1, useBN=False, alpha=0.9, n_batches=100, num_training_batches=1, sampling_rate=100, parameter_search=False, dropout=None, shuffle=False, initialization=None,  noise=None, verbose=True):
+def report(hidden_layers=50, l=0.01, cycles=2, n_s=500, eta_min=1e-5, eta_max=1e-1, useBN=False, alpha=0.9, n_batches=100, num_training_batches=1, sampling_rate=100, parameter_search=False, dropout=None, shuffle=False, initialization=None,  noise=None, verbose=True):
     """
     Method that loads and preprocesses the data and then trains the model for the given parameters in order to generate
     a summary of the model performance which will be used for the report.
@@ -749,19 +732,5 @@ def report(num_nodes=50, l=0.01, cycles=2, n_s=500, eta_min=1e-5, eta_max=1e-1, 
                   'eta_max': eta_max, 'useBN': useBN, 'alpha': alpha, 'dropout': dropout, 'shuffle': shuffle, 'initialization': initialization, 'noise': noise}
 
     summary = model_summary(dataset, training_data, validation_data,
-                            test_data, parameters, num_nodes=num_nodes, verbose=verbose, sampling_rate=sampling_rate, parameter_search=parameter_search)
+                            test_data, parameters, hidden_layers=hidden_layers, verbose=verbose, sampling_rate=sampling_rate, parameter_search=parameter_search)
     return summary
-
-
-# Check error of gradients for each layer
-# Layer #1 is the input layer
-# check_gradient((50,50,50), useBN=True)
-
-
-# Train 3 layer network with (50,50) hidden nodes with
-# n_batch=100, eta_min=1e-5, eta_max=1e-1, lambda=0.005 for two cycles and
-# n_s = 5 * 45000 / n_batch
-# use shuffle, Xavier or He initialization
-
-report(num_nodes=(50,50), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, useBN=False, alpha=0.9, n_batches=100,
-         num_training_batches=5, shuffle=True, initialization='he')

@@ -15,37 +15,161 @@ classify images from the [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html)
 
 ## Computing the gradient
 
-Before continuing we first have to verify that the gradients computed are sufficiently accurate. A comparsion is therefore made between
+Once again we have to verify that the gradients computed are sufficiently accurate for each layer. A comparsion is therefore made between
 the analytically computed gradients and the corresponding gradients computed numerically, for each layer in the network.
 Because it is computationally expensive to compute the cost for all entries in the weight matrices using the numerical methods we'll reduce the number of images and their dimensionality when computing the gradients for this comparison.
 The dimensionality of the images are brought down from 3072 to 10. We're also only using 20 samples and setting the tolerance to 1e-5.
 
-The relative error between the analytical gradient and the gradients computed with the *Finite* and *Central-*difference methods are shown in the table below.
+```python, term=True, echo=False,
+check_gradient((50,50,50), useBN=False)
+```
+
+We'll also verify that the gradients are correct after implementing the batch normalization.
 
 ## Train the network 
 The network is now trained on on all the training data batches (1-5) except for 1000 samples which will be reserved as a validation set.
 The training is then done for 2 cycles using ``n_s = 5 * 45000 / n_batch``, He initialization of the weights and shuffling of the training data.
 
 ```python, term=True, echo=False,
-report(num_nodes=(50,50), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, n_batches=100,
+report(hidden_layers=(50,50), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, useBN=False, n_batches=100,
+         num_training_batches=5, shuffle=True, initialization='he')
+```
+
+Now, consider instead a 9-layer network with the following number of hidden nodes in each layer
+```[50, 30, 20, 20, 10, 10, 10, 10]``` and see what this does to the networks performance.
+We'll first verify that the gradients are still accurate for a deeper network.
+
+```python, term=True, echo=False,
+check_gradient((50, 30, 20, 20, 10, 10, 10, 10), useBN=False)
+```
+We're still good and so the network can now be trained with some confidence in the results.
+
+```python, term=True, echo=False,
+report(hidden_layers=(50, 30, 20, 20, 10, 10, 10, 10), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, useBN=False, n_batches=100,
          num_training_batches=5, shuffle=True, initialization='he')
 ```
 
 ## Implement BatchNormalization
 
+After implementing the batch normalization we'll first check the gradients once again to see if they are still accurate.
 
+```python, term=True, echo=False,
+check_gradient((50,50,50), useBN=True)
+```
+
+Since they seem to be fine we'll carry on and train the network using batch normalization. All other parameters are kept the same as
+in the case without batch normalization in order to make the comparison.
+
+```python, term=True, echo=False,
+report(hidden_layers=(50,50), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, useBN=True, alpha=0.9, n_batches=100,
+         num_training_batches=5, shuffle=True, initialization='he')
+```
+
+We'll now check the impact of batch normalization on a deeper network, namely the 9-layer one which we ran earlier.
+First a quick verification that the gradients are still accurate for the deeper network structure,
+
+```python, term=True, echo=False,
+check_gradient((50, 30, 20, 20, 10, 10, 10, 10), useBN=True)
+```
+Once again, the gradients computations look good and so we may proceed with training the network.
+
+```python, term=True, echo=False,
+report(hidden_layers=(50, 30, 20, 20, 10, 10, 10, 10), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, useBN=True, alpha=0.9, n_batches=100,
+         num_training_batches=5, shuffle=True, initialization='he')
+```
+
+## Parameter search
+
+We'll now perform a *coarse-to-fine* search for a good value of the regularization parameter. 
+The search is done in the same way that it was done in the previous assignment. First we'll perform a coarse search for the best
+regularization parameter over the range ```1e-1 to 1e-5```.
+
+```python, term=True, echo=False,
+parameter_search(-1, -5, filename='coarse')
+```
+
+The coarse search indicates that a good value is in the range ```1e-2``` to ```1e-3``` and so we'll perform a finer search in this region.
+```python, term=True, echo=False,
+parameter_search(-2, -3, filename='fine')
+```
+
+The best value of the regularization parameter found is ```0.005623```.
+A network is then trained for 3 cycles using the value found which gave the following result,
+```python, term=True, echo=False,
+report(hidden_layers=(50,50), l=0.005623, cycles=3, eta_min=1e-5, eta_max=1e-1, useBN=True, alpha=0.9, n_batches=100,
+         num_training_batches=5, shuffle=True, initialization='he')
+```
+
+## Sensitivity to initialization
+We'll now investigate the networks sensitivity to the weight initialization with and without using batch normalization.
+To do this we'll instead initiate the weights of each layer using a normal distribution with mean zero and standard deviation sigma
+where we'll try a couple of values on sigma, specifically ```sigma=1e-1```, ```sigma=1e-3``` and ```sigma=1e-4```.
+
+Starting out with ```sigma=1e-1``` for the networks with and without BN.
+
+**With BN**
+```python, term=True, echo=False,
+report(hidden_layers=(50,50), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, useBN=True, alpha=0.9, n_batches=100,
+         num_training_batches=5, shuffle=True, initialization=1e-1)
+```
+
+**Without BN**
+```python, term=True, echo=False,
+report(hidden_layers=(50,50), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, useBN=False, alpha=0.9, n_batches=100,
+         num_training_batches=5, shuffle=True, initialization=1e-1)
+```
+
+Continuing with ```sigma=1e-3```
+
+**With BN**
+```python, term=True, echo=False,
+report(hidden_layers=(50,50), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, useBN=True, alpha=0.9, n_batches=100,
+         num_training_batches=5, shuffle=True, initialization=1e-3)
+```
+
+**Without BN**
+```python, term=True, echo=False,
+report(hidden_layers=(50,50), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, useBN=False, alpha=0.9, n_batches=100,
+         num_training_batches=5, shuffle=True, initialization=1e-3)
+```
+
+And finally setting ```sigma=1e-3```
+
+**With BN**
+```python, term=True, echo=False,
+report(hidden_layers=(50,50), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, useBN=True, alpha=0.9, n_batches=100,
+         num_training_batches=5, shuffle=True, initialization=1e-4)
+```
+
+**Without BN**
+```python, term=True, echo=False,
+report(hidden_layers=(50,50), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, useBN=False, alpha=0.9, n_batches=100,
+         num_training_batches=5, shuffle=True, initialization=1e-4)
+```
 
 ## Optimize the performance of the network
 Now we make some changes to see if we can increase the performance of the network. There are many possible options
 to consider but I will mainly focus on
 
-* Perform a thorough search for good parameter values
+* Investigate if more a deeper network architecture improves the accuracy on the test data
 * Use dropout
-* Investigate if more hidden layers improves the accuracy on the test data
 * Add noise to the training samples
 
+### Investigate network architecture
 
-### Parameter search
+We'll use batch normalization and investigate the performance of networks with different depths.
+
+First up is a network with 4 hidden layers
+```python, term=True, echo=False,
+report(hidden_layers=(100, 50, 20, 10), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, useBN=True, alpha=0.9, n_batches=100,
+         num_training_batches=5, shuffle=True, initialization='he')
+```
+
+Next is a network with 10 hidden layers
+```python, term=True, echo=False,
+report(hidden_layers=(100, 90, 80, 70, 60, 50, 40, 30, 20, 10), l=0.005, cycles=2, eta_min=1e-5, eta_max=1e-1, useBN=True, alpha=0.9, n_batches=100,
+         num_training_batches=5, shuffle=True, initialization='he')
+```
 
 ### Dropout
 During training we'll kill the activations of neurons with a probability p for each hidden layer. By "killing" a neuron we'll
@@ -54,15 +178,7 @@ This is a strategy used for regularization of neural networks.
 
 Running dropout using ``p=0.5`` on a neural network with 50 nodes in the hidden layer we obtain the following results.
 ```python, term=True, echo=False,
-report(l=0.005, cycles=2, num_nodes=(50,50), dropout=0.5, num_training_batches=5)
-```
-
-
-### Adding more hidden layers
-
-
-```python, term=True, echo=False,
-report(l=0.005, cycles=2, n_s=800, num_nodes=(100, 100, 100), num_training_batches=5)
+report(l=0.005, cycles=2, hidden_layers=(50,50), dropout=0.5, num_training_batches=5)
 ```
 
 ### Add noise to training data
