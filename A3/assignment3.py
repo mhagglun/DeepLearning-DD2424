@@ -12,7 +12,6 @@ from tqdm import tqdm
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sns.set_style('darkgrid')
 
-
 class Network():
     """A multi-layer neural network.
 
@@ -135,7 +134,7 @@ class Network():
                 
             input_values = np.maximum(0, s)
 
-            if self.dropout is not None:
+            if self.dropout is not None and training:
                 p = np.random.binomial(1, (1-self.dropout), size=input_values.shape[1])
                 input_values *= p
 
@@ -163,7 +162,7 @@ class Network():
 
         for i, layer in reversed(list(enumerate(self.layers))):
 
-            if i < len(self.layers)-1 and self.BN:
+            if self.BN and i < len(self.layers)-1:
                 mean = BatchNorm['mean'][i]
                 variance = BatchNorm['variance'][i]
                 score = BatchNorm['scores'][i]
@@ -221,7 +220,7 @@ class Network():
         return 100*np.sum(P == y)/y.shape[0], cost, loss
 
     def train(self, training_data, validation_data, n_batches, cycles=2, n_s=500, eta_min=1e-5, eta_max=1e-1,
-                 sampling_rate=500, shuffle=False, noise=None):
+                 sampling_rate=100, shuffle=False, noise=None):
         """
         Train the network by calculating the weights and bias that minimizes the cost function
         using the Mini-Batch Gradient Descent approach.
@@ -244,14 +243,18 @@ class Network():
         val_results[0, 1], val_results[0, 2], val_results[0,
                                                           3] = self.compute_performance(Xval, Yval, training=True)
 
-        for t in tqdm(range(1, cycles*2*n_s+1), desc='Training model', disable=True):
+        for t in tqdm(range(1,cycles*2*n_s+1), desc='Training model', disable=True):
             j = (t % int(X.shape[1]/n_batches)) + 1
             jstart = (j-1) * n_batches + 1
             jend = j * n_batches
 
-
             Xbatch = X[:, jstart:jend]
             Ybatch = Y[:, jstart:jend]
+
+            if shuffle and (j % 100 == 0):
+                rand = np.random.permutation(X.shape[1])
+                X = X[:, rand]
+                Y = Y[:, rand]
 
             if noise is not None:
                 Xbatch = util.random_noise(
@@ -297,11 +300,6 @@ class Network():
                 val_results[i, 1], val_results[i, 2], val_results[i,
                                                                   3] = self.compute_performance(Xval, Yval)
                 val_results[i, 4] = eta
-
-                if shuffle:
-                    rand = np.random.permutation(X.shape[1])
-                    X = X[:, rand]
-                    Y = Y[:, rand]
 
         return train_results, val_results
 
@@ -561,7 +559,7 @@ def check_gradient(hidden_layers=(50,50), useBN=True, dimensions=10, batchSize=2
     print(table)
 
 
-def parameter_search(hidden_layers, lmin=-1, lmax=-5, num_parameters=5, filename=None):
+def parameter_search(hidden_layers, useBN, lmin=-1, lmax=-5, num_parameters=5, filename=None):
     """
     Performs a coarse search over a broad range of values of the regularization parameter
     to find a good value.
@@ -572,10 +570,10 @@ def parameter_search(hidden_layers, lmin=-1, lmax=-5, num_parameters=5, filename
 
     table = []
     for l in lambdas:
-        output, _, _ = report(hidden_layers=hidden_layers, l=l, num_training_batches=5, parameter_search=True)
+        output, _, _ = report(hidden_layers=hidden_layers, l=l, useBN=useBN, cycles=1, num_training_batches=5, sampling_rate=500, parameter_search=True)
         table.append(output)
 
-    table = tabulate(table, headers=['lambda', 'cycles', 'n_s', 'n_batches', 'eta_min', 'eta_max', 'accuracy (train)',
+    table = tabulate(table, headers=['hidden layers', 'BN', 'lambda', 'cycles', 'n_s', 'n_batches', 'eta_min', 'eta_max', 'initialization', 'accuracy (train)',
                                      'accuracy (val)', 'accuracy (test)'], tablefmt='github')
 
     print(table)
@@ -584,18 +582,38 @@ def parameter_search(hidden_layers, lmin=-1, lmax=-5, num_parameters=5, filename
             f.write(table)
 
 
-def search_lr(hidden_layers, lower_limit, upper_limit, verbose=False):
+def search_layers(hidden_layers, useBN, verbose=False):
     """
     Used to search for a good learning rate by plotting the accuracy vs the learning rate for the specified range.
     """
-    _, train_results, val_results = report(hidden_layers=hidden_layers, cycles=1, eta_min=lower_limit, eta_max=upper_limit, num_training_batches=5, verbose=verbose, sampling_rate=50, parameter_search=True)
-    n = int(len(val_results)/2)
 
-    plt.plot(val_results[1:n,4], val_results[1:n, 1])
-    plt.xlabel('Learning rate')
-    plt.ylabel('Accuracy %')
-    plt.show()
+    table = []
+    for layers in hidden_layers:
+        output, _, _ = report(hidden_layers=layers, cycles=1, useBN=useBN, num_training_batches=5, sampling_rate=500, parameter_search=True)
+        table.append(output)
 
+    table = tabulate(table, headers=['hidden layers', 'BN' ,'lambda', 'cycles', 'n_s', 'n_batches', 'eta_min', 'eta_max', 'initialization' ,'accuracy (train)',
+                                     'accuracy (val)', 'accuracy (test)'], tablefmt='github')
+    print(table)
+    with open('{}.md'.format('layer_search'), 'w') as f:
+        f.write(table)
+
+
+def search_initialization(hidden_layers, initialization, useBN, verbose=False):
+    """
+    Used to search for a good learning rate by plotting the accuracy vs the learning rate for the specified range.
+    """
+
+    table = []
+    for initialization, BN in zip(initialization, useBN):
+        output, _, _ = report(hidden_layers=hidden_layers, cycles=1, num_training_batches=5, useBN=BN, initialization=initialization, sampling_rate=500, parameter_search=True)
+        table.append(output)
+
+    table = tabulate(table, headers=['hidden layers', 'BN', 'lambda', 'cycles', 'n_s', 'n_batches', 'eta_min', 'eta_max', 'initialization', 'accuracy (train)',
+                                     'accuracy (val)', 'accuracy (test)'], tablefmt='github')
+    print(table)
+    with open('{}.md'.format('initialization_search'), 'w') as f:
+        f.write(table)
 
 
 def plot_performance(train_results, val_results, filename=None):
@@ -678,7 +696,7 @@ def model_summary(dataset, training_data, validation_data, test_data, parameters
     # Train network
     train_results, val_results = network.train(training_data, validation_data, n_batches=parameters['n_batches'],
                                  cycles=parameters['cycles'], n_s=parameters['n_s'], eta_min=parameters['eta_min'],
-                                 eta_max=parameters['eta_max'], sampling_rate=sampling_rate, noise=parameters['noise'])
+                                 eta_max=parameters['eta_max'], sampling_rate=sampling_rate, shuffle=parameters['shuffle'], noise=parameters['noise'])
 
     test_accuracy_final, test_cost, _ = network.compute_performance(
         test_data['X'], test_data['Y'])
@@ -700,15 +718,15 @@ def model_summary(dataset, training_data, validation_data, test_data, parameters
         print(model_performance)
 
     if parameter_search:
-        result = ['{:.6f}'.format(parameters['l']), parameters['cycles'], parameters['n_s'], parameters['n_batches'], parameters['eta_min'],
-                  parameters['eta_max'], '{:.2f}%'.format(train_results[-1, 1]), '{:.2f}%'.format(val_results[-1, 1]), '{:.2f}%'.format(test_accuracy_final)]
+        result = ['{}'.format(hidden_layers), '{}'.format(network.BN), '{:.6f}'.format(parameters['l']), parameters['cycles'], parameters['n_s'], parameters['n_batches'], parameters['eta_min'],
+                  parameters['eta_max'], '{}'.format(parameters['initialization']),'{:.2f}%'.format(train_results[-1, 1]), '{:.2f}%'.format(val_results[-1, 1]), '{:.2f}%'.format(test_accuracy_final)]
         return result, train_results, val_results
 
     else:
         plot_performance(train_results, val_results)
         plt.show()
 
-def report(hidden_layers=50, l=0.01, cycles=2, n_s=500, eta_min=1e-5, eta_max=1e-1, useBN=False, alpha=0.9, n_batches=100, num_training_batches=1, sampling_rate=100, parameter_search=False, dropout=None, shuffle=False, initialization=None,  noise=None, verbose=True):
+def report(hidden_layers=50, l=0.01, cycles=2, n_s=None, eta_min=1e-5, eta_max=1e-1, useBN=False, alpha=0.9, n_batches=100, num_training_batches=1, sampling_rate=500, parameter_search=False, dropout=None, shuffle=False, initialization=None,  noise=None, verbose=True):
     """
     Method that loads and preprocesses the data and then trains the model for the given parameters in order to generate
     a summary of the model performance which will be used for the report.
@@ -726,7 +744,8 @@ def report(hidden_layers=50, l=0.01, cycles=2, n_s=500, eta_min=1e-5, eta_max=1e
     validation_data['X'] = dataset.normalize(validation_data['X'], mean, std)
     test_data['X'] = dataset.normalize(test_data['X'], mean, std)
 
-    n_s = int( 5 * 45000 / n_batches )
+    if not isinstance(n_s, (int, float)):
+        n_s = int( 5 * 45000 / n_batches )
 
     parameters = {'l': l, 'n_batches': n_batches, 'cycles': cycles, 'n_s': n_s, 'eta_min': eta_min,
                   'eta_max': eta_max, 'useBN': useBN, 'alpha': alpha, 'dropout': dropout, 'shuffle': shuffle, 'initialization': initialization, 'noise': noise}
