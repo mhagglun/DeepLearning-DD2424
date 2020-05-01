@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 from numpy.matlib import repmat
+from tabulate import tabulate
 from tqdm import tqdm
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -12,20 +13,46 @@ sns.set_style('darkgrid')
 class RNN():
     """A recurrent neural network. """
 
-    def __init__(self, dataset, hidden_state=100, eta=1e-1, sigma=1e-2):
+    def __init__(self, dataset=None, hidden_state=100, eta=1e-1, sigma=1e-2, config=None):
         super().__init__()
-        self.text = dataset.text
-        self.K = dataset.K
-        self.char_to_ind = dataset.char_to_ind
-        self.ind_to_char = dataset.ind_to_char
-        self.m = hidden_state
-        self.eta = eta
+        if config is not None:
+            self.load_config(config)
+        else:
+            self.dataset = dataset
+            self.encode = dataset.encode
+            self.text = dataset.text
+            self.K = dataset.K
+            self.char_to_ind = dataset.char_to_ind
+            self.ind_to_char = dataset.ind_to_char
+            self.m = hidden_state
+            self.eta = eta
+            self.parameters = {'U': np.random.normal(0, sigma, size=(hidden_state, self.K)),
+                               'V': np.random.normal(0, sigma, size=(self.K, hidden_state)),
+                               'W': np.random.normal(0, sigma, size=(hidden_state, hidden_state)),
+                               'b': np.zeros((hidden_state)),
+                               'c': np.zeros((self.K))}
 
-        self.U = np.random.normal(0, sigma, size=(hidden_state, self.K))
-        self.V = np.random.normal(0, sigma, size=(self.K, hidden_state))
-        self.W = np.random.normal(0, sigma, size=(hidden_state, hidden_state))
-        self.b = np.zeros((hidden_state, 1))
-        self.c = np.zeros((self.K, 1))
+    def load_config(self, filename):
+        config = np.load(filename, allow_pickle=True)
+        self.m = config.f.hidden_state
+        self.eta = config.f.eta
+        self.dataset = Source(str(config.f.source))
+        self.encode = self.dataset.encode
+        self.text = self.dataset.text
+        self.K = self.dataset.K
+        self.char_to_ind = self.dataset.char_to_ind
+        self.ind_to_char = self.dataset.ind_to_char
+        self.parameters = {'U': config['U'], 'V': config['V'],
+                           'W': config['W'], 'b': config['b'], 'c': config['c']}
+
+    def save(self, filename):
+        np.savez_compressed(
+            filename,
+            **{name: self.parameters[name] for name in self.parameters},
+            source=self.dataset.filename,
+            hidden_state=self.m,
+            eta=self.eta
+        )
 
     def synthesize(self, hidden_state, input_state, sequence_length):
         """Method used to synthesize text
@@ -38,17 +65,14 @@ class RNN():
         Returns:
             [array] -- An array of probabilities for each character at the current time step
         """
-
-        xnext = np.zeros((self.K, 1))
-        xnext[input_state] = 1
-
+        xnext = input_state
         h = hidden_state
         text = ''
-        for t in range(sequence_length):
-            p, _, h, _ = self.evaluate(xnext, h)
+        for _ in range(sequence_length):
+            p, h = self.evaluate(xnext, h)
             # Draw random sample using the probabilities
             ix = np.random.choice(range(self.K), p=p.flat)
-            xnext = np.zeros((self.K, 1))
+            xnext = np.zeros((self.K))
             xnext[ix] = 1  # 1-hot-encoding
             text += self.ind_to_char[ix]
 
@@ -59,113 +83,113 @@ class RNN():
         Calculates and returns the probability, the intermediary activation values as well as the cost
         and loss of the recurrent neural network.
         """
-        a = self.W.dot(hidden_state) + \
-            self.U.dot(input_state) + self.b     # input
-        h = np.tanh(a)                              # hidden
-        o = self.V.dot(h) + self.c                  # output
-        # p = np.exp(o) / np.sum(np.exp(o), axis=0)   # softmax
+        a = self.parameters['W'].dot(hidden_state) + \
+            self.parameters['U'].dot(input_state) + \
+            self.parameters['b']
+        h = np.tanh(a)
+        o = self.parameters['V'].dot(
+            h) + self.parameters['c']
+        p = np.exp(o) / np.sum(np.exp(o), axis=0)
 
-        # TODO: Temp. solution, can probably be removed once grads have been clipped
-        p = np.exp(o - np.max(o, axis=0)) / \
-                np.exp(o - np.max(o, axis=0)).sum(axis=0)   
+        return p, h
 
-        return p, o, h, a
-
-    def compute_gradients(self, inputs, y, hidden_state):
+    def compute_gradients(self, inputs, targets, hidden_state):
 
         # forward pass
-        n = len(inputs)
-        loss = 0
-        p, o, h, a, x = {}, {}, {}, {}, {}
-        h[0] = hidden_state
-        for t in range(1, n):
-            xnext = np.zeros((self.K, 1))
-            xnext[inputs[t]] = 1
-            x[t] = xnext
+        n = inputs.shape[1]
+        p, h = np.zeros((self.K, n)), np.zeros((self.m, n+1))
 
-            p[t], o[t], h[t], a[t] = self.evaluate(xnext, h[t-1])
-            loss -= np.log(p[t][y[t]][0])
+        h[:, 0] = hidden_state
+        for t in range(n):
+            p[:, t], h[:, t+1] = self.evaluate(inputs[:, t], h[:, t])
+
+        logarg = np.multiply(targets, p)
+        loss = -sum(np.log(np.multiply(targets, p).sum(axis=0)))
 
         # backward pass
-        hnext = np.zeros(h[0].shape)
+        grads = {'U': np.zeros(self.parameters['U'].shape), 'V': np.zeros(self.parameters['V'].shape),
+                 'W': np.zeros(self.parameters['W'].shape), 'b': np.zeros(self.parameters['b'].shape),
+                 'c': np.zeros(self.parameters['c'].shape)}
 
-        dU, dV, dW = np.zeros(self.U.shape), np.zeros(
-            self.V.shape), np.zeros(self.W.shape)
-        db, dc = np.zeros(self.b.shape), np.zeros(self.c.shape)
-        for t in reversed(range(1, n)):
+        hprevious = np.zeros((self.m))
+        do = -(targets - p).T
 
-            do = -(y[t] - p[t])
+        grads['V'] = np.dot(do.T, h[:, 1:].T)
+        grads['c'] = do.sum(axis=0)
 
-            dh = self.V.T.dot(do) + hnext
-            da = np.multiply(dh, (1 - h[t]**2))
+        dh, da = np.zeros((self.m, n)), np.zeros((self.m, n))
 
-            dV += np.dot(do, h[t].T)
-            dU += np.dot(da, x[t].T)
-            dW += np.dot(da, h[t-1].T)
+        dh[:, -1] = np.dot(do.T[:, -1], self.parameters['V'])
+        da[:, -1] = np.multiply(dh[:, -1], (1 - h[:, -1]**2))
 
-            db += da
-            dc += do
+        for t in reversed(range(n-1)):
+            dh[:, t] = np.dot(do[t, :], self.parameters['V']) + \
+                np.dot(da[:, t+1], self.parameters['W'])
+            da[:, t] = np.multiply(dh[:, t], (1 - h[:, t+1]**2))
 
-            hnext = np.dot(self.W.T, da)
+        grads['U'] = np.dot(da, inputs.T)
+        grads['W'] = np.dot(da, h[:, :-1].T)
+        grads['b'] = da.sum(axis=1)
 
-        grads = [dU, dV, dW, db, dc]
+        return grads, loss, h[:, -1]
 
-        # TODO: Clip gradients after they've been fixed / verified to be correct
-
-        return grads, loss, h[n-1]
-
-    def train(self, epochs, sequence_length):
+    def train(self, epochs, sequence_length, verbose=True):
         """
         Train the network by calculating the weights and bias that minimizes the loss function
         using the Adaptive Gradient Descent approach.
         """
-
-        h = np.zeros((self.m, 1))
-
-        memory_params = [np.zeros(self.U.shape), np.zeros(self.W.shape),
-                         np.zeros(self.V.shape), np.zeros(self.b.shape),
-                         np.zeros(self.c.shape)]
+        memory_params = {'U': np.zeros(self.parameters['U'].shape), 'V': np.zeros(self.parameters['V'].shape),
+                         'W': np.zeros(self.parameters['W'].shape), 'b': np.zeros(self.parameters['b'].shape),
+                         'c': np.zeros(self.parameters['c'].shape)}
 
         e = 0
-        for i in tqdm(range(epochs), desc='Training model'):
-            if i > len(self.text)-sequence_length-1:
+        h = np.zeros((self.m))
+        for i in tqdm(range(epochs), desc='Training model', disable=(not verbose)):
+            if e > len(self.dataset.text)-sequence_length-1:
                 e = 0
+                h = np.zeros((self.m))
+
             # Grab a sequence of input characters from the text
-            X_chars = self.text[e:e+sequence_length]
-            Y_chars = self.text[e+1:e+sequence_length+1]
+            input_chars = self.dataset.text[e:e+sequence_length]
+            target_chars = self.dataset.text[e+1:e+sequence_length+1]
 
             # Convert to one-hot encoding
-            X = np.asarray([self.char_to_ind[char] for char in X_chars])
-            Y = np.asarray([self.char_to_ind[char] for char in Y_chars])
+            input_labels = self.encode(input_chars)
+            target_labels = self.encode(target_chars)
 
-            grads, loss, h = self.compute_gradients(X, Y, h)
+            grads, loss, h = self.compute_gradients(
+                input_labels, target_labels, h)
 
             if i == 0:
-                smooth_loss = loss
+                self.smooth_loss = loss
 
-            smooth_loss *= 0.999 + 0.001 * loss
+            self.smooth_loss = self.smooth_loss * 0.999 + 0.001 * loss
 
             # print some synthesized text here
-            if i % 500 == 0:
-                text = self.synthesize(h, X[0], 200)
-                print(text)
-                print('Smooth loss:', smooth_loss)
+            if i % 500 == 0 and verbose:
+                text = self.synthesize(h, input_labels[:, 0], 200)
+                print('Gibberish-bot says: \n', text)
+                print('\nSmooth loss:', self.smooth_loss)
 
-            # do adagrad update of parameters
-            # TODO: implement a neater/cleaner solution
-            layers = [self.U, self.V, self.W, self.b, self.c]
-            for idx, (layer, grad) in enumerate(zip(layers, grads)):
-                memory_params[idx] = np.power(grad, 2)
-                layer -= self.eta / \
-                    np.sqrt(memory_params[idx] + np.finfo(float).eps) * grad
+            # clip grads if they become too large
+            for key in grads:
+                grads[key] = np.clip(grads[key], -5, 5)
 
-            e += 1
+            # Adagrad update of the parameters
+            for key in self.parameters:
+                memory_params[key] += np.power(grads[key], 2)
+                self.parameters[key] -= self.eta / \
+                    np.sqrt(memory_params[key] +
+                            np.finfo(float).eps) * grads[key]
+
+            e += sequence_length
 
 
-class TextSource:
+class Source:
     """
     Class used to load and preprocess the text into a usable data set.
     """
+
     def __init__(self, filename):
         super().__init__()
         self.filename = filename
@@ -194,53 +218,98 @@ class TextSource:
         self.ind_to_char = dict((idx, char)
                                 for idx, char in enumerate(characters))
 
+    def encode(self, input_text):
+        """Method that generates one-hot encodings of input and target text
+
+        Arguments:
+            input_text {string} -- The input text to convert to one-hot encoding
+
+        Returns:
+            [array (K x len(input_text))] -- The one-hot matrix representation of the input text
+        """
+        indices = [self.char_to_ind[char] for char in input_text]
+        one_hot_labels = (np.eye(self.K)[indices]).T
+
+        return one_hot_labels
+
 
 """ Functions for model comparison and presentation of the results. """
 
-# TODO: Rework this method to work with RNN
-@DeprecationWarning
+
 def compute_grads_num(network, X, Y, h):
     """
     Compute the gradient using the Central Difference approximation.
     """
-    grad_weights, grad_bias = [], []
-    grad_gamma, grad_beta = [], []
-    for idx, layer in enumerate(network.layers):
-        W = layer.W
-        b = layer.b
+    n = len(network.parameters)
+    hprev = np.zeros((network.m))
 
-        gradW = np.matlib.zeros(W.shape)
-        gradb = np.matlib.zeros(b.shape)
+    grads = {'U': np.zeros(network.parameters['U'].shape), 'V': np.zeros(network.parameters['V'].shape),
+             'W': np.zeros(network.parameters['W'].shape), 'b': np.zeros(network.parameters['b'].shape),
+             'c': np.zeros(network.parameters['c'].shape)}
 
-        for i in range(len(b)):
-            network.layers[idx].b[i] -= h
-            _, _, c1, _, _ = network.forward_pass(X, Y)
-            network.layers[idx].b[i] += 2*h
-            _, _, c2, _, _ = network.forward_pass(X, Y)
-            gradb[i] = (c2-c1) / (2*h)
-            network.layers[idx].b[i] -= h
+    for key in network.parameters:
+        for i in range(network.parameters[key].shape[0]):
+            if network.parameters[key].ndim == 1:
+                network.parameters[key][i] -= h
+                _, l1, _ = network.compute_gradients(X, Y, hprev)
+                network.parameters[key][i] += 2*h
+                _, l2, _ = network.compute_gradients(X, Y, hprev)
+                grads[key][i] = (l2-l1)/(2*h)
+                network.parameters[key][i] -= h
+            else:
+                for j in range(network.parameters[key].shape[1]):
+                    network.parameters[key][i, j] -= h
+                    _, l1, _ = network.compute_gradients(X, Y, hprev)
+                    network.parameters[key][i, j] += 2*h
+                    _, l2, _ = network.compute_gradients(X, Y, hprev)
+                    grads[key][i, j] = (l2-l1)/(2*h)
+                    network.parameters[key][i, j] -= h
 
-        for i in range(W.shape[0]):
-            for j in range(W.shape[1]):
-                network.layers[idx].W[i, j] -= h
-                _, _, c1, _, _ = network.forward_pass(X, Y)
-                network.layers[idx].W[i, j] += 2*h
-                _, _, c2, _, _ = network.forward_pass(X, Y)
-                gradW[i, j] = (c2-c1) / (2*h)
-                network.layers[idx].W[i, j] -= h
-
-        grad_weights.append(gradW)
-        grad_bias.append(gradb)
-
-    return grad_weights, grad_bias
+    return grads
 
 
-def check_gradient(tol=1e-5):
-    #TODO: Implement
-    pass
+def check_gradient(m=5, sigma=1e-2, sequence_length=25, tol=1e-4):
+    np.random.seed(400)
+    text = Source('data/goblet_book.txt')
+
+    network = RNN(text, hidden_state=m, sigma=sigma)
+
+    input_chars = network.text[0:sequence_length]
+    target_chars = network.text[1:sequence_length+1]
+
+    input_labels = text.encode(input_chars)
+    target_labels = text.encode(target_chars)
+
+    hprev = np.zeros((network.m))
+
+    grads, _, _ = network.compute_gradients(input_labels, target_labels, hprev)
+    num_grads = compute_grads_num(network, input_labels, target_labels, tol)
+
+    table = []
+    for key in grads:
+        rel_error = np.sum(abs(grads[key] - num_grads[key])) / np.maximum(tol,
+                                                                          np.sum(abs(grads[key])) + np.sum(abs(num_grads[key])))
+        table.append(['d'+key, rel_error])
+
+    table = tabulate(
+        table, headers=['Gradient', 'Relative error'], tablefmt='github')
+    print(table)
 
 
-text = TextSource('data/goblet_book.txt')
+def main(source='data/goblet_book.txt', config=None, iterations=10000, sequence_length=25, filename=None, verbose=True):
 
-network = RNN(text)
-network.train(1000, 25)
+    if config is not None:
+        network = RNN(config=config)
+        network.train(iterations, sequence_length, verbose=verbose)
+
+    else:
+        text = Source(source)
+        network = RNN(text)
+        network.train(iterations, sequence_length, verbose=verbose)
+
+        if filename is not None:
+            network.save(filename)
+
+
+main(iterations=40000, sequence_length=25, filename='weights')
+# main(config='weights.npz')
