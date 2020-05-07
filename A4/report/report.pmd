@@ -1,0 +1,45 @@
+# DD2424 Deep Learning in Data Science - Assignment 4
+
+```python, term=True, echo=False
+%matplotlib inline
+import os
+import sys
+sys.path.append(os.getcwd() + '/..')
+from assignment4 import *
+```
+
+## Introduction
+The goal of this assignment is to train a * recurrent neural network* using an extract of J.K. Rowlings *Harry Potter and the Goblet of Fire* in order to synthesize text.
+The text contains 1107542 characters.
+
+## Computing the gradient
+
+As usual, the gradient calculations have to be verified before training the network.
+```python, term=True, echo=False
+check_gradient()
+```
+
+## Train the network 
+The network is then trained for 2 epochs on the training data. For every 10 000 iterations a snippet of text is synthesised.
+
+```python, term=True, echo=False
+main(source='data/goblet_book.txt', iterations=100000, sequence_length=25, filename='weights/goblet_weights.npz')
+```
+
+The smooth loss plot
+
+## Synthesizing text
+The trained model is now ready to be used. We'll have it synthesize a text which is 1000 characters long
+
+```python, term=True, echo=False
+network = main(config='weights/goblet_weights.npz')
+text = network.synthesize(np.zeros((network.m)), np.zeros((network.K)), 1000)
+print(text)
+```
+
+## Impersonating Donald Trump
+In this next part we'll use Donald Trumps twitter history in order to train the model and see if it is able to pick up on
+some of his favorite phrases or words. The dataset used to train the model can be found [here](https://github.com/bpb27/trump_tweet_data_archive).
+The dataset contains JSON files which were parsed into a .txt file which then was cleaned up by replacing special characters such as
+"á" with "a". Links were also removed from the text as well as emojis and other non latin-1 characters.
+
