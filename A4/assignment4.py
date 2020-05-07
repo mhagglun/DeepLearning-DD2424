@@ -13,7 +13,14 @@ sns.set_style('darkgrid')
 class RNN():
     """A recurrent neural network. """
 
-    def __init__(self, dataset=None, hidden_state=100, eta=1e-1, sigma=1e-2, config=None):
+    def __init__(self, dataset=None, hidden_nodes=100, sigma=1e-2, config=None):
+        """Constructor
+
+        Keyword Arguments:
+            dataset {Source} -- The (Source) object used to represent the text file (default: {None})
+            hidden_nodes {int} -- The number of nodes in the hidden layer (default: {100})
+            sigma {[type]} -- [description] (default: {1e-2})
+        """
         super().__init__()
         if config is not None:
             self.load_config(config)
@@ -24,18 +31,21 @@ class RNN():
             self.K = dataset.K
             self.char_to_ind = dataset.char_to_ind
             self.ind_to_char = dataset.ind_to_char
-            self.m = hidden_state
-            self.eta = eta
-            self.parameters = {'U': np.random.normal(0, sigma, size=(hidden_state, self.K)),
-                               'V': np.random.normal(0, sigma, size=(self.K, hidden_state)),
-                               'W': np.random.normal(0, sigma, size=(hidden_state, hidden_state)),
-                               'b': np.zeros((hidden_state)),
+            self.m = hidden_nodes
+            self.parameters = {'U': np.random.normal(0, sigma, size=(hidden_nodes, self.K)),
+                               'V': np.random.normal(0, sigma, size=(self.K, hidden_nodes)),
+                               'W': np.random.normal(0, sigma, size=(hidden_nodes, hidden_nodes)),
+                               'b': np.zeros((hidden_nodes)),
                                'c': np.zeros((self.K))}
 
     def load_config(self, filename):
+        """Load a saved config into the model
+
+        Arguments:
+            filename {str} -- The path to the saved config file
+        """
         config = np.load(filename, allow_pickle=True)
-        self.m = config.f.hidden_state
-        self.eta = config.f.eta
+        self.m = config.f.hidden_nodes
         self.dataset = Source(str(config.f.source))
         self.encode = self.dataset.encode
         self.text = self.dataset.text
@@ -46,12 +56,16 @@ class RNN():
                            'W': config['W'], 'b': config['b'], 'c': config['c']}
 
     def save(self, filename):
+        """Method for saving the current model configuration
+
+        Arguments:
+            filename {str} -- The path to save the file to
+        """
         np.savez_compressed(
             filename,
             **{name: self.parameters[name] for name in self.parameters},
             source=self.dataset.filename,
-            hidden_state=self.m,
-            eta=self.eta
+            hidden_nodes=self.m,
         )
 
     def synthesize(self, hidden_state, input_state, sequence_length):
@@ -69,7 +83,7 @@ class RNN():
         h = hidden_state
         text = ''
         for _ in range(sequence_length):
-            p, h = self.evaluate(xnext, h)
+            p, h = self.predict(xnext, h)
             # Draw random sample using the probabilities
             ix = np.random.choice(range(self.K), p=p.flat)
             xnext = np.zeros((self.K))
@@ -78,10 +92,16 @@ class RNN():
 
         return text
 
-    def evaluate(self, input_state, hidden_state):
-        """
-        Calculates and returns the probability, the intermediary activation values as well as the cost
-        and loss of the recurrent neural network.
+    def predict(self, input_state, hidden_state):
+        """Calculates and returns the probability and the intermediary activation values of the recurrent neural network.
+
+        Arguments:
+            input_state {ndarray} -- The one-hot encoded input character
+            hidden_state {ndarray} -- The hidden layer of the RNN
+
+        Returns:
+            p {ndarray} -- The probabilities for the next character
+            h {ndarray} -- The intermediary activation values
         """
         a = self.parameters['W'].dot(hidden_state) + \
             self.parameters['U'].dot(input_state) + \
@@ -94,14 +114,26 @@ class RNN():
         return p, h
 
     def compute_gradients(self, inputs, targets, hidden_state):
+        """Computes the gradients of the parameters of the network by performing a forward and backward pass.
 
+
+        Arguments:
+            inputs {ndarray} -- The one-hot encoded input sequence
+            targets {ndarray} -- The target one-hot encoded sequence
+            hidden_state {ndarray} -- The current hidden state of the network
+
+        Returns:
+            grads [dict] -- The gradients of the network parameters stored as a dictionary
+            loss [float] -- The current loss
+            h [ndarray] -- The updated state of the hidden layer
+        """
         # forward pass
         n = inputs.shape[1]
         p, h = np.zeros((self.K, n)), np.zeros((self.m, n+1))
 
         h[:, 0] = hidden_state
         for t in range(n):
-            p[:, t], h[:, t+1] = self.evaluate(inputs[:, t], h[:, t])
+            p[:, t], h[:, t+1] = self.predict(inputs[:, t], h[:, t])
 
         logarg = np.multiply(targets, p)
         loss = -sum(np.log(np.multiply(targets, p).sum(axis=0)))
@@ -133,25 +165,39 @@ class RNN():
 
         return grads, loss, h[:, -1]
 
-    def train(self, epochs, sequence_length, verbose=True):
-        """
-        Train the network by calculating the weights and bias that minimizes the loss function
+    def train(self, epochs, eta, sequence_length, verbose=True):
+        """Train the network by calculating the weights and bias that minimizes the loss function
         using the Adaptive Gradient Descent approach.
+
+        Arguments:
+            epochs {integer} -- The number epochs (passes over the training data) to train for
+            sequence_length {integer} -- The length of each sequence of text passed
+
+        Keyword Arguments:
+            verbose {bool} -- If true, display network metrics, synthesized text and training progress (default: {True})
         """
         memory_params = {'U': np.zeros(self.parameters['U'].shape), 'V': np.zeros(self.parameters['V'].shape),
                          'W': np.zeros(self.parameters['W'].shape), 'b': np.zeros(self.parameters['b'].shape),
                          'c': np.zeros(self.parameters['c'].shape)}
 
+        iterations = int(epochs * len(self.dataset.text) / sequence_length)
+        smooth_loss = np.zeros((iterations))
+
         e = 0
         h = np.zeros((self.m))
-        for i in tqdm(range(epochs), desc='Training model', disable=(not verbose)):
+
+        for i in tqdm(range(iterations), desc='Training model', disable=(verbose)):
             if e > len(self.dataset.text)-sequence_length-1:
                 e = 0
                 h = np.zeros((self.m))
 
+            # Reset hidden state after new tweet
+            if e % 10*sequence_length == 0:
+                h = np.zeros((self.m))
+
             # Grab a sequence of input characters from the text
-            input_chars = self.dataset.text[e:e+sequence_length]
-            target_chars = self.dataset.text[e+1:e+sequence_length+1]
+            input_chars = self.dataset.text[e:e+sequence_length-1]
+            target_chars = self.dataset.text[e+1:e+sequence_length]
 
             # Convert to one-hot encoding
             input_labels = self.encode(input_chars)
@@ -164,12 +210,13 @@ class RNN():
                 self.smooth_loss = loss
 
             self.smooth_loss = self.smooth_loss * 0.999 + 0.001 * loss
+            smooth_loss[i] = self.smooth_loss
 
             # print some synthesized text here
-            if i % 500 == 0 and verbose:
+            if i % 10000 == 0 and verbose:
                 text = self.synthesize(h, input_labels[:, 0], 200)
-                print('Gibberish-bot says: \n', text)
-                print('\nSmooth loss:', self.smooth_loss)
+                print('\nIteration: ', i, '\tSmooth loss:', self.smooth_loss)
+                print('Synthesized text: \n', text)
 
             # clip grads if they become too large
             for key in grads:
@@ -178,11 +225,14 @@ class RNN():
             # Adagrad update of the parameters
             for key in self.parameters:
                 memory_params[key] += np.power(grads[key], 2)
-                self.parameters[key] -= self.eta / \
+                self.parameters[key] -= eta / \
                     np.sqrt(memory_params[key] +
                             np.finfo(float).eps) * grads[key]
-
+                            
             e += sequence_length
+
+        plt.plot(smooth_loss)
+        plt.show()
 
 
 class Source:
@@ -200,7 +250,9 @@ class Source:
         self.ind_to_char
 
     def get_text(self):
-
+        """Reads the input text file, determine the number of unique characters in the source text and
+        create mappings between characters and indices for the one-hot representation
+        """
         with open(self.filename) as f:
             text = f.read()
 
@@ -219,26 +271,34 @@ class Source:
                                 for idx, char in enumerate(characters))
 
     def encode(self, input_text):
-        """Method that generates one-hot encodings of input and target text
+        """Generates one-hot encodings of input and target text
 
         Arguments:
             input_text {string} -- The input text to convert to one-hot encoding
 
         Returns:
-            [array (K x len(input_text))] -- The one-hot matrix representation of the input text
+            one_hot_encoding {ndarray} -- The one-hot matrix representation of the input text
         """
         indices = [self.char_to_ind[char] for char in input_text]
-        one_hot_labels = (np.eye(self.K)[indices]).T
+        one_hot_encoding = (np.eye(self.K)[indices]).T
 
-        return one_hot_labels
+        return one_hot_encoding
 
 
 """ Functions for model comparison and presentation of the results. """
 
 
 def compute_grads_num(network, X, Y, h):
-    """
-    Compute the gradient using the Central Difference approximation.
+    """Compute the gradient using the Central Difference approximation.
+
+    Arguments:
+        network {RNN} -- The RNN object
+        X {ndarray} -- The input sequence
+        Y {ndarray} -- The target sequence
+        h {ndarray} -- The hidden state of the network
+
+    Returns:
+        {dict} -- The gradients of the network parameters stored in a dictionary
     """
     n = len(network.parameters)
     hprev = np.zeros((network.m))
@@ -269,7 +329,14 @@ def compute_grads_num(network, X, Y, h):
 
 
 def check_gradient(m=5, sigma=1e-2, sequence_length=25, tol=1e-4):
-    np.random.seed(400)
+    """Verify the implemented analytical gradients using numerically obtained gradients
+
+    Keyword Arguments:
+        m {integer} -- The number of nodes in the hidden layer (default: {5})
+        sigma {float} -- The standard deviation used to initiate the normally distributed weights (default: {1e-2})
+        sequence_length {integer} -- [description] (default: {25})
+        tol {float} -- Tolerance used for calculating the relative error (default: {1e-4})
+    """
     text = Source('data/goblet_book.txt')
 
     network = RNN(text, hidden_state=m, sigma=sigma)
@@ -296,20 +363,27 @@ def check_gradient(m=5, sigma=1e-2, sequence_length=25, tol=1e-4):
     print(table)
 
 
-def main(source='data/goblet_book.txt', config=None, iterations=10000, sequence_length=25, filename=None, verbose=True):
+def main(source='data/goblet_book.txt', config=None, epochs=10, eta=1e-1, sequence_length=25, filename=None, verbose=True):
 
     if config is not None:
         network = RNN(config=config)
-        network.train(iterations, sequence_length, verbose=verbose)
 
     else:
         text = Source(source)
         network = RNN(text)
-        network.train(iterations, sequence_length, verbose=verbose)
+        network.train(epochs, eta, sequence_length, verbose=verbose)
 
         if filename is not None:
             network.save(filename)
 
+    return network
 
-main(iterations=40000, sequence_length=25, filename='weights')
-# main(config='weights.npz')
+
+# Example use
+
+# network = main(source='data/raw_tweets.txt', epochs=3, sequence_length=14, filename='weights/trump_weights.npz')
+network = main(source='data/goblet_book.txt', epochs=10, eta=1e-1, sequence_length=25, filename='weights/goblet_weights.npz')
+
+# network = main(config='weights/trump_weights.npz')
+# text = network.synthesize(np.zeros((network.m)), np.zeros((network.K)), 140)
+# print(text)
