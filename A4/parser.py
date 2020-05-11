@@ -15,9 +15,9 @@ def read_tweets(filename, output):
     Arguments:
         filename {string} -- The path to the json file to parse
         output {string} -- The path to the file to write the output to
-    """    
+    """
     output_txt = ''
-    with open (filename, 'r') as json_file:
+    with open(filename, 'r') as json_file:
         tweets = json.load(json_file)
         for tweet in tweets:
             # Read tweet, ignoring characters which are not part of latin-1
@@ -30,8 +30,6 @@ def read_tweets(filename, output):
             txt = re.sub(r'http\S+', '', txt)
             # convert all letter to lower case
             txt = txt.lower()
-            # Add start/end of tweet character
-            # txt = '>' + txt
             # Padd text so that its 140 characters
             txt = txt.ljust(140)
             output_txt += txt
@@ -39,14 +37,14 @@ def read_tweets(filename, output):
     with open(output, 'w') as output_file:
         output_file.write(output_txt)
 
-def parse_all_tweets(directory='./data/trump_tweet_data_archive-master/', output='data/raw_tweets.txt'):
+
+def parse_all_tweets(directory='./data/trump_tweet_data_archive/', output='data/raw_tweets.txt'):
     """Parses all json files in the specified directory using read_tweets() and writes the output to a .txt file
 
     Keyword Arguments:
         directory {str} -- [The path to the directory containing the json files] (default: {'./data/trump_tweet_data_archive-master/'})
         output {str} -- [The path to where the output file will be written to] (default: {'data/raw_tweets.txt'})
     """
-    for filename in os.listdir(directory):
+    for filename in sorted(os.listdir(directory)):
         if filename.endswith('.json'):
             read_tweets(directory+filename, output)
-

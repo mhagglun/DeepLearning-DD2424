@@ -32,6 +32,7 @@ class RNN():
             self.char_to_ind = dataset.char_to_ind
             self.ind_to_char = dataset.ind_to_char
             self.m = hidden_nodes
+            self.smooth_loss = 0
             self.parameters = {'U': np.random.normal(0, sigma, size=(hidden_nodes, self.K)),
                                'V': np.random.normal(0, sigma, size=(self.K, hidden_nodes)),
                                'W': np.random.normal(0, sigma, size=(hidden_nodes, hidden_nodes)),
@@ -46,6 +47,7 @@ class RNN():
         """
         config = np.load(filename, allow_pickle=True)
         self.m = config.f.hidden_nodes
+        self.smooth_loss = config.f.smooth_loss
         self.dataset = Source(str(config.f.source))
         self.encode = self.dataset.encode
         self.text = self.dataset.text
@@ -66,6 +68,7 @@ class RNN():
             **{name: self.parameters[name] for name in self.parameters},
             source=self.dataset.filename,
             hidden_nodes=self.m,
+            smooth_loss=self.smooth_loss
         )
 
     def synthesize(self, hidden_state, input_state, sequence_length):
@@ -185,19 +188,19 @@ class RNN():
 
         e = 0
         h = np.zeros((self.m))
-
+        print(len(self.dataset.text))
         for i in tqdm(range(iterations), desc='Training model', disable=(verbose)):
             if e > len(self.dataset.text)-sequence_length-1:
                 e = 0
                 h = np.zeros((self.m))
 
             # Reset hidden state after new tweet
-            if e % 10*sequence_length == 0:
-                h = np.zeros((self.m))
+            # if e % 10*sequence_length == 0:
+            #     h = np.zeros((self.m))
 
             # Grab a sequence of input characters from the text
-            input_chars = self.dataset.text[e:e+sequence_length-1]
-            target_chars = self.dataset.text[e+1:e+sequence_length]
+            input_chars = self.dataset.text[e:e+sequence_length]
+            target_chars = self.dataset.text[e+1:e+sequence_length+1]
 
             # Convert to one-hot encoding
             input_labels = self.encode(input_chars)
@@ -212,7 +215,7 @@ class RNN():
             self.smooth_loss = self.smooth_loss * 0.999 + 0.001 * loss
             smooth_loss[i] = self.smooth_loss
 
-            # print some synthesized text here
+            # print some synthesized text
             if i % 10000 == 0 and verbose:
                 text = self.synthesize(h, input_labels[:, 0], 200)
                 print('\nIteration: ', i, '\tSmooth loss:', self.smooth_loss)
@@ -228,10 +231,14 @@ class RNN():
                 self.parameters[key] -= eta / \
                     np.sqrt(memory_params[key] +
                             np.finfo(float).eps) * grads[key]
-                            
+
             e += sequence_length
 
+        for xc in range(int(len(self.dataset.text)/sequence_length), int(epochs * len(self.dataset.text) / sequence_length), int(len(self.dataset.text)/sequence_length)):
+            plt.axvline(x=xc, color='orange')
         plt.plot(smooth_loss)
+        plt.xlabel('Iterations')
+        plt.ylabel('Loss')
         plt.show()
 
 
@@ -339,7 +346,7 @@ def check_gradient(m=5, sigma=1e-2, sequence_length=25, tol=1e-4):
     """
     text = Source('data/goblet_book.txt')
 
-    network = RNN(text, hidden_state=m, sigma=sigma)
+    network = RNN(text, hidden_nodes=m, sigma=sigma)
 
     input_chars = network.text[0:sequence_length]
     target_chars = network.text[1:sequence_length+1]
@@ -381,9 +388,15 @@ def main(source='data/goblet_book.txt', config=None, epochs=10, eta=1e-1, sequen
 
 # Example use
 
-# network = main(source='data/raw_tweets.txt', epochs=3, sequence_length=14, filename='weights/trump_weights.npz')
-network = main(source='data/goblet_book.txt', epochs=10, eta=1e-1, sequence_length=25, filename='weights/goblet_weights.npz')
+# check_gradient()
 
+# network = main(source='data/raw_tweets.txt', epochs=20, sequence_length=140, filename='weights/trump_weights_20.npz')
+# network = main(source='data/goblet_book.txt', epochs=50, eta=1e-1, sequence_length=25, filename='weights/goblet_weights_nepochs_50.npz')
+
+# network = main(config='weights/goblet_weights.npz')
 # network = main(config='weights/trump_weights.npz')
-# text = network.synthesize(np.zeros((network.m)), np.zeros((network.K)), 140)
+
+
+# print('Smooth loss of the network: ', network.smooth_loss)
+# text = network.synthesize(np.zeros((network.m)), x, 1000)
 # print(text)
